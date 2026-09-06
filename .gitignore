@@ -24,7 +24,15 @@ data/
 !data/.gitkeep
 *.pdf
 chroma/
+chroma_store/
 models/
+
+# Hugging Face model cache — multi-GB, redownloadable, never commit
+.cache/
+huggingface/
+
+# Claude Code local harness state
+.claude/
 
 # OS / editor
 .DS_Store

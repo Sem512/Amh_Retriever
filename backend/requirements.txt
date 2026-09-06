@@ -1,0 +1,6 @@
+# POC dependencies — Phase 1 only.
+# Install torch separately first, from the CPU-only index, or this will
+# pull CUDA wheels you don't need and don't have the GPU for:
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch
+sentence-transformers>=3.0
+chromadb>=0.5
