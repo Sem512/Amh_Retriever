@@ -25,62 +25,61 @@ so the frontend can render the page image with the matching region highlighted.
 
 ## 1. Component & data-flow diagram
 
+**Ingestion path — PDF in, indexed chunks out.**
+
 ```mermaid
 flowchart TB
-    subgraph client["Frontend — React (Lane D)"]
-        UI_ADMIN["Admin console<br/>upload · job status · doc manager"]
-        UI_SEARCH["Search UI<br/>query box · result list"]
-        UI_VIEW["Document viewer<br/>page image + bbox highlight overlay"]
-    end
+    A1["Admin uploads PDF<br/>POST /documents (Bearer JWT)"]
+    A2["Ingestion orchestrator<br/>background task + job row"]
+    A3["PDF splitter — PyMuPDF<br/>page PNGs @ 300dpi"]
+    A4["Preprocessing — OpenCV<br/>deskew, denoise, binarize, crop<br/>LANE A"]
+    A5["OCR — Tesseract amh / EasyOCR<br/>words + bounding boxes<br/>LANE B"]
+    A6["Amharic normalizer<br/>homophone folding, punctuation, digits<br/>LANE B"]
+    A7["Chunker<br/>page-scoped, overlapping, carries bboxes<br/>LANE B"]
+    A8["Embedder — bge-m3<br/>LANE C"]
+    F1[("File store<br/>PDFs and page images")]
+    F2[("PostgreSQL<br/>documents, pages, chunks, jobs")]
+    F3[("ChromaDB<br/>id = chunk_id, vector")]
+    F4["BM25 index<br/>in-process, built from norm_text"]
 
-    subgraph api["FastAPI backend (Lane C)"]
-        AUTH["Auth module<br/>JWT issue / verify · role guard"]
-        R_ADMIN["/documents/*  PROTECTED (admin)"]
-        R_SEARCH["/search  ·  /documents/{id}/pages/{n}  PUBLIC"]
-        ORCH["Ingestion orchestrator<br/>background job runner + job table"]
-        RETR["Retrieval service<br/>normalize → embed → dense + BM25 → RRF"]
-    end
-
-    subgraph ingest["Ingestion pipeline"]
-        SPLIT["PDF splitter<br/>PyMuPDF → page PNGs @300dpi"]
-        PREP["Preprocessing — OpenCV (Lane A)<br/>deskew · denoise · binarize · crop"]
-        OCR["OCR engine (Lane B)<br/>Tesseract amh / EasyOCR"]
-        NORM["Amharic normalizer (Lane B)<br/>homophone folding · punctuation · digits"]
-        CHUNK["Chunker (Lane B→C seam)<br/>page-scoped, overlapping, bbox-carrying"]
-        EMBED["Embedding pipeline (Lane C)<br/>bge-m3 via sentence-transformers"]
-    end
-
-    subgraph store["Storage"]
-        FS[("File store<br/>original PDF · page PNGs<br/>(local disk / mounted volume)")]
-        PG[("PostgreSQL<br/>documents · pages · chunks<br/>users · roles · jobs")]
-        CH[("ChromaDB<br/>persistent collection<br/>id = chunk_id, vector, thin metadata")]
-        BM25["BM25 index<br/>in-process, built from PG normalized text"]
-    end
-
-    UI_ADMIN -->|"POST /documents (multipart, Bearer JWT)"| R_ADMIN
-    UI_SEARCH -->|"POST /search"| R_SEARCH
-    UI_VIEW -->|"GET page image + chunk bboxes"| R_SEARCH
-    R_ADMIN --> AUTH
-    R_SEARCH -.->|"no token required"| AUTH
-    R_ADMIN --> ORCH
-
-    ORCH --> SPLIT --> PREP --> OCR --> NORM --> CHUNK --> EMBED
-    SPLIT -->|page PNGs| FS
-    PREP -->|preprocessed PNGs| FS
-    ORCH -->|"doc + page + job rows"| PG
-    CHUNK -->|"chunk rows (text, bbox, page)"| PG
-    EMBED -->|"id + vector"| CH
-    PG -->|"corpus rebuild"| BM25
-
-    R_SEARCH --> RETR
-    RETR --> NORM
-    RETR --> EMBED
-    RETR --> CH
-    RETR --> BM25
-    RETR --> PG
-    PG --> R_SEARCH
-    FS --> R_SEARCH
+    A1 --> A2 --> A3 --> A4
+    A4 -->|PreprocessedPage| A5
+    A5 --> A6 --> A7
+    A7 -->|Chunk| A8
+    A3 --> F1
+    A4 --> F1
+    A2 --> F2
+    A7 --> F2
+    A8 --> F3
+    F2 --> F4
 ```
+
+**Query path — Amharic text in, ranked hits with highlight boxes out.**
+
+```mermaid
+flowchart TB
+    Q1["Searcher types Amharic query"]
+    Q2["POST /search — public, no token"]
+    Q3["Normalizer<br/>same version used at index time"]
+    Q4["Embedder — query vector"]
+    Q5[("ChromaDB<br/>dense search, top 50")]
+    Q6[("BM25 index<br/>lexical search, top 50")]
+    Q7["RRF fusion, k = 60"]
+    Q8[("PostgreSQL<br/>hydrate top 10")]
+    Q9["SearchResponse<br/>snippet, bboxes, page dims"]
+    Q10["Viewer — page image with highlight overlay"]
+
+    Q1 --> Q2 --> Q3
+    Q3 --> Q4
+    Q3 --> Q6
+    Q4 --> Q5
+    Q5 --> Q7
+    Q6 --> Q7
+    Q7 --> Q8 --> Q9 --> Q10
+```
+
+The two retrieval branches run concurrently. The frontend (Lane D) owns Q1 and Q10 and touches
+nothing else; everything between Q2 and Q9 is Lane C.
 
 **Lane ownership**
 
@@ -286,73 +285,102 @@ normalized 0–1 floats, because a wrong denominator is visible immediately rath
 
 ### 3.1 Relational schema (PostgreSQL)
 
-```mermaid
-erDiagram
-    USERS ||--o{ DOCUMENTS : uploads
-    DOCUMENTS ||--o{ PAGES : has
-    DOCUMENTS ||--o{ INGESTION_JOBS : tracked_by
-    PAGES ||--o{ CHUNKS : contains
+Relationships at a glance:
 
-    USERS {
-        uuid id PK
-        text username UK
-        text password_hash
-        text role "admin | searcher"
-        bool is_active
-        timestamptz created_at
-    }
-    DOCUMENTS {
-        uuid id PK
-        text title
-        text original_filename
-        text file_path
-        text file_hash UK "sha256, dedupe on re-upload"
-        int page_count
-        text language "default amh"
-        uuid uploaded_by FK
-        text status "pending|processing|indexed|failed"
-        timestamptz created_at
-        jsonb metadata "author, year, source — flexible, low-stakes"
-    }
-    PAGES {
-        uuid id PK
-        uuid doc_id FK
-        int page_number
-        text image_path "preprocessed image, what the viewer renders"
-        int image_width
-        int image_height
-        text raw_text "full page, for snippet windowing"
-        float mean_confidence
-        text ocr_engine
-        text preprocess_version
-    }
-    CHUNKS {
-        text chunk_id PK "doc:page:index, mirrors ChromaDB id"
-        uuid page_id FK
-        uuid doc_id FK "denormalized, see note"
-        int page_number "denormalized, see note"
-        int chunk_index
-        text raw_text
-        text norm_text
-        jsonb bboxes
-        int char_start
-        int char_end
-        float mean_confidence
-        text normalizer_version
-        tsvector norm_tsv "generated from norm_text — fallback lexical path"
-    }
-    INGESTION_JOBS {
-        uuid id PK
-        uuid doc_id FK
-        text stage "split|preprocess|ocr|normalize|chunk|embed|done"
-        text status "queued|running|succeeded|failed"
-        int pages_done
-        int pages_total
-        text error_message
-        timestamptz started_at
-        timestamptz finished_at
-    }
+```mermaid
+flowchart LR
+    U["users"] --> D["documents"]
+    D --> P["pages"]
+    P --> C["chunks"]
+    D --> J["ingestion_jobs"]
+    C --> V[("ChromaDB<br/>same id, no mapping table")]
 ```
+
+The authoritative definition is the DDL below — it is precise about types, keys, and constraints in
+a way an entity box list is not, and the team can lift it straight into the first migration.
+
+```sql
+CREATE TYPE user_role  AS ENUM ('admin', 'searcher');
+CREATE TYPE doc_status AS ENUM ('pending', 'processing', 'indexed', 'failed');
+
+CREATE TABLE users (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username      TEXT        NOT NULL UNIQUE,
+    password_hash TEXT        NOT NULL,          -- bcrypt/argon2, never plaintext
+    role          user_role   NOT NULL DEFAULT 'admin',
+    is_active     BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE documents (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title             TEXT        NOT NULL,
+    original_filename TEXT        NOT NULL,
+    file_path         TEXT        NOT NULL,
+    file_hash         CHAR(64)    NOT NULL UNIQUE,   -- sha256; blocks duplicate re-upload
+    page_count        INT         NOT NULL DEFAULT 0,
+    language          TEXT        NOT NULL DEFAULT 'amh',
+    uploaded_by       UUID        REFERENCES users(id) ON DELETE SET NULL,
+    status            doc_status  NOT NULL DEFAULT 'pending',
+    metadata          JSONB       NOT NULL DEFAULT '{}',  -- author, year, source
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE pages (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id             UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    page_number        INT  NOT NULL,             -- 1-indexed
+    image_path         TEXT NOT NULL,             -- preprocessed image = what the viewer renders
+    image_width        INT  NOT NULL,             -- bbox coordinate space
+    image_height       INT  NOT NULL,
+    raw_text           TEXT,                      -- full page text, for snippet windowing
+    mean_confidence    REAL,
+    ocr_engine         TEXT,
+    preprocess_version TEXT,
+    UNIQUE (doc_id, page_number)
+);
+
+CREATE TABLE chunks (
+    chunk_id           TEXT PRIMARY KEY,          -- '{doc_id}:p{page:04d}:c{idx:03d}' = ChromaDB id
+    page_id            UUID NOT NULL REFERENCES pages(id)     ON DELETE CASCADE,
+    doc_id             UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,  -- denormalized
+    page_number        INT  NOT NULL,                                             -- denormalized
+    chunk_index        INT  NOT NULL,
+    raw_text           TEXT NOT NULL,             -- displayed to the user
+    norm_text          TEXT NOT NULL,             -- indexed and matched against
+    bboxes             JSONB NOT NULL,            -- [[x,y,w,h], ...] one box per text line
+    char_start         INT  NOT NULL,             -- offset into pages.raw_text
+    char_end           INT  NOT NULL,
+    mean_confidence    REAL,
+    normalizer_version TEXT NOT NULL,             -- checked against the running normalizer at boot
+    norm_tsv           TSVECTOR GENERATED ALWAYS AS
+                           (to_tsvector('simple', norm_text)) STORED,
+    UNIQUE (page_id, chunk_index)
+);
+
+CREATE TABLE ingestion_jobs (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doc_id        UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    stage         TEXT NOT NULL,   -- split | preprocess | ocr | normalize | chunk | embed | done
+    status        TEXT NOT NULL,   -- queued | running | succeeded | failed
+    pages_done    INT  NOT NULL DEFAULT 0,
+    pages_total   INT  NOT NULL DEFAULT 0,
+    error_message TEXT,
+    started_at    TIMESTAMPTZ,
+    finished_at   TIMESTAMPTZ
+);
+
+CREATE INDEX ON chunks (doc_id);
+CREATE INDEX ON chunks (page_id);
+CREATE INDEX ON pages  (doc_id, page_number);
+CREATE INDEX ON ingestion_jobs (doc_id);
+CREATE INDEX chunks_norm_tsv_idx ON chunks USING GIN (norm_tsv);
+```
+
+Note `to_tsvector('simple', ...)` rather than a language configuration: PostgreSQL ships no Amharic
+stemmer or stop-word list, and `'simple'` does plain tokenization with no stemming — which is what we
+want, since our normalizer has already done the language-specific work. This column is the *fallback*
+lexical path (see §3.2); primary BM25 lives in-process.
 
 **Normalization notes (for the advisor question you will definitely get).** The schema is in 3NF with
 two deliberate, documented denormalizations:
@@ -548,15 +576,13 @@ expiry, no refresh tokens (out of scope; re-login is fine for this system).
 ```mermaid
 flowchart LR
     DEV["Developer machine"]
-    subgraph compose["docker compose"]
-        PGC["postgres:16"]
-    end
-    subgraph proc["Local processes"]
-        API["uvicorn — FastAPI<br/>+ ChromaDB PersistentClient<br/>+ bge-m3 in-process<br/>+ BM25 in RAM"]
-        WEB["vite dev server — React"]
-    end
-    DATA[("./data<br/>pdfs/ · pages/ · chroma/")]
-    DEV --> WEB --> API --> PGC
+    WEB["vite dev server — React"]
+    API["uvicorn — FastAPI<br/>ChromaDB embedded<br/>bge-m3 in-process<br/>BM25 in RAM"]
+    PGC[("postgres:16<br/>docker compose")]
+    DATA[("./data<br/>pdfs, pages, chroma")]
+
+    DEV --> WEB --> API
+    API --> PGC
     API --> DATA
 ```
 
