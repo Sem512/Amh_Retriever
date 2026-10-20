@@ -59,14 +59,14 @@ flowchart TB
 ```mermaid
 flowchart TB
     Q1["Searcher types Amharic query"]
-    Q2["POST /search — public, no token"]
+    Q2["GET /search?q=&k= — public, no token"]
     Q3["Normalizer<br/>same version used at index time"]
     Q4["Embedder — query vector"]
     Q5[("ChromaDB<br/>dense search, top 50")]
     Q6[("BM25 index<br/>lexical search, top 50")]
     Q7["RRF fusion, k = 60"]
     Q8[("PostgreSQL<br/>hydrate top 10")]
-    Q9["SearchResponse<br/>snippet, bboxes, page dims"]
+    Q9["SearchResponse<br/>snippet, normalized bboxes, page"]
     Q10["Viewer — page image with highlight overlay"]
 
     Q1 --> Q2 --> Q3
@@ -243,41 +243,72 @@ PostgreSQL after retrieval.
 
 ### 2.6 API → Frontend (Lane C → Lane D)
 
-```
-SearchRequest
-  query       : str
-  top_k       : int = 10
-  doc_ids     : list[UUID] | null   — optional scope filter
-  page        : int = 1             — pagination over fused results
+> **Revision note.** This section originally specified `POST /search` with pixel bounding boxes and
+> different field names. The frontend (Lane D, `frontend/`) was built against its own contract, which
+> was reasonable and already implemented, so §2.6 now **adopts the frontend's shape** and extends it
+> where our design needs more. Where the two differ, the rationale is given below.
 
-SearchHit
-  chunk_id      : str
-  doc_id        : UUID
-  doc_title     : str
-  page_number   : int
-  snippet       : str          — raw_text, with matched terms marked
-  bboxes        : list[[x,y,w,h]]
-  page_width    : int
-  page_height   : int
-  score         : float        — fused RRF score
-  dense_rank    : int | null   — provenance: rank in dense list, null if absent
-  bm25_rank     : int | null   — provenance: rank in lexical list, null if absent
-  page_image_url: str          — GET path for the page image
+```
+GET /search?q=<text>&k=10          — public, no token        (k: 1..50, default 10)
 
 SearchResponse
-  query_raw     : str
-  query_norm    : str          — shown in a debug panel; invaluable for demos and advisor questions
-  hits          : list[SearchHit]
-  total         : int
-  took_ms       : int
+  query       : str                — echo of q
+  took_ms     : int
+  results     : list[SearchResult]
+
+SearchResult
+  chunk_id    : str                — "{doc_id}:p{page:04d}:c{idx:03d}"
+  doc_id      : str
+  title       : str                — documents.title
+  page        : int                — 1-indexed
+  pages_total : int
+  score       : float              — 0..1, display only (see "Score" below)
+  snippet     : str                — chunks.raw_text, never norm_text
+  bbox        : {x, y, w, h}       — NORMALIZED 0..1, union of `bboxes`; kept for the current viewer
+  bboxes      : list[{x, y, w, h}] — NORMALIZED 0..1, one per text line (preferred; draw these)
+
+  optional extras (frontend ignores unknown fields, so these are free):
+  dense_rank  : int | null         — rank in the dense list, null if absent
+  bm25_rank   : int | null         — rank in the lexical list, null if absent
+  query_norm  : str                — on the response root; for a debug panel and advisor demos
 ```
 
-Exposing `dense_rank` / `bm25_rank` per hit costs nothing and gives the team (and the advisor demo) a
-direct answer to "why did this result rank here?" — that transparency is worth building in from day one.
+**Bounding boxes are normalized 0–1, origin top-left.** The pixel→normalized conversion happens once,
+in the API layer: `x = left / pages.image_width`, `y = top / pages.image_height`, and so on. The
+database and the `Chunk` contract (§2.4) stay in pixels, because pixels are what OCR produces and they
+remain meaningful alongside `image_width`/`image_height`. Normalized values are the better wire format:
+they stay correct at any zoom or display size with no denominators for the frontend to track, which
+matters because the viewer scales the image freely. (An earlier draft of this section argued for pixels
+plus explicit page dimensions on the grounds that a wrong denominator is easier to spot; the frontend
+removes the denominators entirely, which removes that failure mode rather than making it visible.)
 
-Coordinates are returned in **pixels relative to `page_width`/`page_height`**. The frontend scales by
-`rendered_width / page_width`. Absolute pixels + explicit denominators are less bug-prone than
-normalized 0–1 floats, because a wrong denominator is visible immediately rather than subtly off.
+**`bboxes` is a list; `bbox` is its union.** A chunk spanning three lines has three line boxes. A single
+union rectangle over a multi-line chunk would also cover the margins beside each short line, so the
+viewer should draw `bboxes`. `bbox` exists only so the viewer keeps working until it is updated.
+
+**Score.** Raw RRF values are small (the maximum for k = 60 with two lists is `2/61 ≈ 0.033`) and would
+display as "3%". Return `score = rrf / (2 / (k + 1))`, which maps to (0, 1]. This is a display scale
+only: it is not a probability and is not comparable between queries. Ranking is by the raw RRF value.
+
+**Page images.** `GET /documents/{id}/pages/{n}/image` returns the **preprocessed** page image — the
+exact image OCR ran on (§2.1) — as `image/png`, publicly. It must not be a separate render of the
+original PDF: after deskew or crop the geometry differs and every highlight would be offset.
+
+**Other endpoints the frontend uses** (full access rules in §5):
+
+| Endpoint | Request | Response |
+|---|---|---|
+| `POST /auth/login` | JSON `{username, password}` (not FastAPI's default form body) | `{access_token, token_type, role, username}`; 401 on bad credentials |
+| `GET /documents` | admin | `[{id, title, pages, status, uploaded_at}]` |
+| `POST /documents` | admin, multipart field `file` | `202 {id, status: "queued"}` |
+| `DELETE /documents/{id}` | admin | `204`; removes pages, chunks **and** the ChromaDB vectors |
+
+`status` is exactly one of `queued`, `processing`, `indexed`, `failed`. The frontend polls
+`GET /documents` every 2.5 s while any document is `queued` or `processing`.
+
+**Deferred, deliberately.** Search filters by document and result pagination were in the first draft of
+this contract and are not used by the frontend; they can be added as optional query parameters later
+without breaking it.
 
 ---
 
@@ -301,7 +332,7 @@ a way an entity box list is not, and the team can lift it straight into the firs
 
 ```sql
 CREATE TYPE user_role  AS ENUM ('admin', 'searcher');
-CREATE TYPE doc_status AS ENUM ('pending', 'processing', 'indexed', 'failed');
+CREATE TYPE doc_status AS ENUM ('queued', 'processing', 'indexed', 'failed');
 
 CREATE TABLE users (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -321,7 +352,7 @@ CREATE TABLE documents (
     page_count        INT         NOT NULL DEFAULT 0,
     language          TEXT        NOT NULL DEFAULT 'amh',
     uploaded_by       UUID        REFERENCES users(id) ON DELETE SET NULL,
-    status            doc_status  NOT NULL DEFAULT 'pending',
+    status            doc_status  NOT NULL DEFAULT 'queued',
     metadata          JSONB       NOT NULL DEFAULT '{}',  -- author, year, source
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -438,7 +469,7 @@ sequenceDiagram
     participant B as BM25 index
     participant PG as PostgreSQL
 
-    U->>API: POST /search {query, top_k}
+    U->>API: GET /search?q=...&k=10
     API->>N: normalize(query)
     N-->>API: query_norm
     par Dense path
@@ -453,7 +484,7 @@ sequenceDiagram
     API->>API: RRF fuse → ranked chunk_ids
     API->>PG: SELECT chunks + pages + documents WHERE chunk_id IN (top 10)
     PG-->>API: text, bboxes, page dims, titles
-    API->>API: build snippets, attach page_image_url
+    API->>API: build snippets, normalize bboxes
     API-->>U: SearchResponse
 ```
 
@@ -508,7 +539,7 @@ A chunk absent from one list contributes nothing from that term (equivalently, t
 > underperforming, implement min-max convex combination as an *alternative* and compare — this is a
 > genuinely good evaluation chapter for the report, not wasted work.
 
-**6 — Hydrate from PostgreSQL.** Take the top `top_k` fused IDs, fetch chunk + page + document rows in
+**6 — Hydrate from PostgreSQL.** Take the top `k` fused IDs, fetch chunk + page + document rows in
 one query, preserving fusion order (`ORDER BY array_position(...)`). We hydrate *after* fusion, not
 before, so we touch ~10 rows instead of ~100.
 
@@ -518,11 +549,12 @@ against normalized query terms, then emit character offsets for the frontend. Ma
 normalized forms but *applied to raw text positions* — this is the subtle bit, and the reason
 `Chunk` carries `char_start`/`char_end`.
 
-**8 — Return bboxes for highlighting.** Each hit carries its line boxes plus `page_width`/`page_height`.
-The frontend fetches `page_image_url`, renders it at whatever width fits, and draws absolutely-positioned
-translucent rectangles scaled by `rendered_width / page_width`. Because the rendered image *is* the
-image OCR ran on (§2.1), no coordinate transform is involved. Clicking a hit opens the viewer on that
-page with those boxes lit.
+**8 — Return bboxes for highlighting.** The API converts each line box from pixels to normalized 0–1
+using the page's stored `image_width`/`image_height` (§2.6). The frontend fetches the page image from
+`/documents/{doc_id}/pages/{page}/image`, renders it at whatever width fits, and draws
+absolutely-positioned translucent rectangles at percentage offsets, so zoom and resize need no
+recalculation. Because the served image *is* the image OCR ran on (§2.1), no geometric transform is
+involved. Clicking a hit opens the viewer on that page with those boxes lit.
 
 **Not in scope:** a cross-encoder reranking stage over the fused top-50. It would measurably improve
 precision and is the natural next step, but it adds a second model, latency, and tuning surface.
@@ -539,13 +571,13 @@ expiry, no refresh tokens (out of scope; re-login is fine for this system).
 
 | Endpoint | Method | Access | Notes |
 |---|---|---|---|
-| `/auth/login` | POST | **Public** | returns JWT |
+| `/auth/login` | POST | **Public** | JSON body; returns `{access_token, token_type, role, username}` |
 | `/auth/me` | GET | Authenticated | |
-| `/search` | POST | **Public** | the core value of the system is open access |
-| `/documents` | GET | **Public** | browse the corpus |
+| `/search` | GET | **Public** | `?q=&k=`; the core value of the system is open access |
+| `/documents` | GET | **Admin** | list with status, for the admin console; corpus browsing for the public is out of scope |
 | `/documents/{id}` | GET | **Public** | metadata |
-| `/documents/{id}/pages/{n}/image` | GET | **Public** | page image for the viewer |
-| `/documents` | POST | **Admin** | upload — starts ingestion |
+| `/documents/{id}/pages/{n}/image` | GET | **Public** | preprocessed page image for the viewer |
+| `/documents` | POST | **Admin** | upload; returns 202 `{id, status: "queued"}` and starts ingestion |
 | `/documents/{id}` | PATCH / DELETE | **Admin** | edit metadata / remove doc + chunks + vectors |
 | `/documents/{id}/reprocess` | POST | **Admin** | re-run pipeline |
 | `/jobs`, `/jobs/{id}` | GET | **Admin** | ingestion status |
@@ -676,7 +708,7 @@ constant in the schema. Cheap insurance against a decision made on a model card 
 measurement.
 
 ### Risk 5 — There is no ground truth, so hybrid weights can't be justified
-**Why risky:** RRF weights, chunk size, and `top_k` are all tunable, and without a labeled set the
+**Why risky:** RRF weights, chunk size, and `k` are all tunable, and without a labeled set the
 team will tune them by eyeballing results — which is unfalsifiable, and exactly what an advisor will
 challenge. This is a *reporting* risk as much as a technical one: an undefendable evaluation section
 undermines an otherwise sound system.

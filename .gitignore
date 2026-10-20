@@ -31,6 +31,9 @@ models/
 .cache/
 huggingface/
 
+# Archives (contents are committed unpacked)
+*.zip
+
 # Claude Code local harness state
 .claude/
 

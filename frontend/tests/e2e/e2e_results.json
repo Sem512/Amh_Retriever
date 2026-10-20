@@ -1,0 +1,152 @@
+[
+ {
+  "id": "TC-01",
+  "name": "Home page loads in Amharic with search box and headline",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-02",
+  "name": "Empty query keeps the Search button disabled",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-03",
+  "name": "Amharic query returns ranked results with count and latency",
+  "passed": true,
+  "detail": "3 results"
+ },
+ {
+  "id": "TC-04",
+  "name": "Results are sorted by descending match score",
+  "passed": true,
+  "detail": "[67, 67, 55]"
+ },
+ {
+  "id": "TC-05",
+  "name": "Bounding-box highlight overlay is drawn at the normalized coordinates (x=10%, y=18%, w=80%, h=13%)",
+  "passed": true,
+  "detail": "left: 10%; top: 18%; width: 80%; height: 13%;"
+ },
+ {
+  "id": "TC-06",
+  "name": "Selecting another result jumps the viewer to that result's page",
+  "passed": true,
+  "detail": "ገጽ 2 ከ 3"
+ },
+ {
+  "id": "TC-07",
+  "name": "Previous-result button is disabled on the first result",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-08",
+  "name": "Next-result button is disabled on the last result",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-09",
+  "name": "Zoom in enlarges and zoom out shrinks the page image",
+  "passed": true,
+  "detail": "709 < 886 < 1108px"
+ },
+ {
+  "id": "TC-10",
+  "name": "Page navigation stops at the last page (button disabled)",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-11",
+  "name": "A synonym query (ታክስ) still finds tax passages (semantic match demo)",
+  "passed": true,
+  "detail": "3 results"
+ },
+ {
+  "id": "TC-12",
+  "name": "A query with no match shows the empty-state message",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-13",
+  "name": "Language toggle switches the interface to English",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-14",
+  "name": "Unauthenticated visit to /admin redirects to the login page",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-15",
+  "name": "Wrong password shows an inline error and stays on login",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-16",
+  "name": "Correct credentials open the admin page and show the document list",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-17",
+  "name": "Uploaded PDF appears in the table with status Processing",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-18",
+  "name": "Status polling updates the document to Indexed without a page reload",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-19",
+  "name": "Unsupported file type is rejected with a message",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-20",
+  "name": "Deleting a document (after confirmation) removes it from the list",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-21",
+  "name": "After sign-out, admin pages are protected again",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-22",
+  "name": "On a phone, opening a result shows the viewer full-screen",
+  "passed": true,
+  "detail": "390x800"
+ },
+ {
+  "id": "TC-23",
+  "name": "On a phone, the Back button returns to the result list",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-24",
+  "name": "No horizontal page scrolling at 390 px width",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-25",
+  "name": "No JavaScript or console errors during the whole session",
+  "passed": true,
+  "detail": ""
+ }
+]

@@ -13,7 +13,7 @@ boundary, and the riskiest decisions the team should discuss explicitly.
 | A — Preprocessing | Kibreab | [`preprocessing/`](preprocessing/) | not started |
 | B — OCR + normalization | Ferid | [`ocr/`](ocr/) | not started |
 | C — Backend + retrieval | Semir | [`backend/`](backend/) | Phase 1 POC done — see [`backend/poc/`](backend/poc/) |
-| D — Frontend | Yassin | [`frontend/`](frontend/) | not started |
+| D — Frontend | Yassin | [`frontend/`](frontend/) | delivered, tested against a mock backend only — real-backend integration pending |
 
 Each lane directory has its own README pointing at the exact section of
 `ARCHITECTURE.md` that defines its inputs/outputs — those contracts are the
