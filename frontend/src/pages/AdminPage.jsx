@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { useI18n } from '../lib/i18n';
+import { isAuthError } from '../lib/errors';
 import UploadDropzone from '../components/UploadDropzone';
 
 const BADGE = {
@@ -13,8 +14,21 @@ const BADGE = {
 export default function AdminPage() {
   const { t } = useI18n();
   const [docs, setDocs] = useState(null);
+  const [loadError, setLoadError] = useState(null); // message from the backend, or ''
+  const [actionError, setActionError] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
 
-  const load = useCallback(() => api.listDocuments().then(setDocs).catch(() => setDocs([])), []);
+  // A failed load must not look like an empty archive. Auth failures (401/403)
+  // are handled globally: the session is cleared and the user is sent to login.
+  const load = useCallback(async () => {
+    try {
+      setDocs(await api.listDocuments());
+      setLoadError(null);
+    } catch (e) {
+      if (isAuthError(e)) return;
+      setLoadError(e.message || '');
+    }
+  }, []);
   useEffect(() => { load(); }, [load]);
 
   // Poll while any document is still being processed.
@@ -27,8 +41,16 @@ export default function AdminPage() {
 
   async function remove(d) {
     if (!window.confirm(`${t('confirmDelete')}\n\n${d.title}`)) return;
-    await api.deleteDocument(d.id);
-    load();
+    setDeletingId(d.id);
+    setActionError('');
+    try {
+      await api.deleteDocument(d.id);
+      await load();
+    } catch (e) {
+      if (!isAuthError(e)) setActionError(`${t('errDelete')} ${d.title}${e.message ? `: ${e.message}` : ''}`);
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   return (
@@ -39,7 +61,16 @@ export default function AdminPage() {
       </section>
       <section>
         <h2 className="mb-3 font-serif text-xl font-bold">{t('documents')}</h2>
-        {docs && docs.length === 0 ? (
+        {actionError && <p className="mb-3 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">{actionError}</p>}
+        {loadError !== null && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
+            <span>{t('errLoadDocs')}{loadError ? `: ${loadError}` : ''}</span>
+            <button className="btn-ghost py-1" onClick={load}>{t('retry')}</button>
+          </div>
+        )}
+        {docs === null && loadError === null ? (
+          <p className="text-mute" role="status">{t('loadingDocs')}</p>
+        ) : docs === null ? null : docs.length === 0 ? (
           <p className="text-mute">{t('noDocs')}</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-rule bg-panel">
@@ -54,7 +85,7 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-rule">
-                {(docs ?? []).map((d) => {
+                {docs.map((d) => {
                   const [k, cls] = BADGE[d.status] ?? BADGE.queued;
                   return (
                     <tr key={d.id}>
@@ -62,7 +93,7 @@ export default function AdminPage() {
                       <td className="px-4 py-3 tabular-nums">{d.pages}</td>
                       <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${cls}`}>{t(k)}</span></td>
                       <td className="px-4 py-3 tabular-nums text-mute">{d.uploaded_at}</td>
-                      <td className="px-4 py-3 text-right"><button className="btn-danger py-1.5" onClick={() => remove(d)}>{t('delete')}</button></td>
+                      <td className="px-4 py-3 text-right"><button className="btn-danger py-1.5" onClick={() => remove(d)} disabled={deletingId === d.id}>{t('delete')}</button></td>
                     </tr>
                   );
                 })}

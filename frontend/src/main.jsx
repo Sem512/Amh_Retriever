@@ -10,12 +10,6 @@ import '@fontsource/noto-sans-ethiopic/ethiopic-700.css';
 import '@fontsource/noto-serif-ethiopic/ethiopic-400.css';
 import '@fontsource/noto-serif-ethiopic/ethiopic-500.css';
 import '@fontsource/noto-serif-ethiopic/ethiopic-700.css';
-import '@fontsource/noto-sans-ethiopic/ethiopic-400.css';
-import '@fontsource/noto-sans-ethiopic/ethiopic-500.css';
-import '@fontsource/noto-sans-ethiopic/ethiopic-700.css';
-import '@fontsource/noto-serif-ethiopic/ethiopic-400.css';
-import '@fontsource/noto-serif-ethiopic/ethiopic-500.css';
-import '@fontsource/noto-serif-ethiopic/ethiopic-700.css';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(

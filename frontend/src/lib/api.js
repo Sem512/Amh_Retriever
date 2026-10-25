@@ -2,6 +2,7 @@
 // If VITE_API_URL is empty the app runs against an in-browser mock so the UI can
 // be demonstrated and tested without the backend.
 import { mockApi } from './mockApi';
+import { extractDetail, isAuthError } from './errors';
 
 const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 export const USE_MOCK = !BASE;
@@ -13,20 +14,31 @@ export function setToken(t) {
   else sessionStorage.removeItem('token');
 }
 
+// Called when an authenticated request is rejected with 401 or 403
+// (expired, invalid or insufficient token). AuthProvider registers it.
+let onUnauthorized = null;
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn;
+}
+
+function httpError(status, detail) {
+  const err = new Error(detail);
+  err.status = status;
+  return err;
+}
+
 async function request(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${BASE}${path}`, { ...opts, headers });
   if (!res.ok) {
-    let detail = res.statusText;
+    let body = '';
     try {
-      detail = (await res.json()).detail || detail;
+      body = await res.text();
     } catch {
-      /* non-JSON error body */
+      /* unreadable body */
     }
-    const err = new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
-    err.status = res.status;
-    throw err;
+    throw httpError(res.status, extractDetail(body, res.statusText || `HTTP ${res.status}`));
   }
   return res;
 }
@@ -44,7 +56,8 @@ const real = {
   },
 
   // GET /search?q=&k= -> { query, took_ms, results: [Result] }
-  // Result = { chunk_id, doc_id, title, page, pages_total, score, snippet, bbox:{x,y,w,h} }
+  // Result = { chunk_id, doc_id, title, page, pages_total, score, snippet,
+  //            bboxes: [{x,y,w,h}, ...] }   (normalized 0-1; legacy single `bbox` still accepted)
   async search(q, k = 10) {
     return (await request(`/search?q=${encodeURIComponent(q)}&k=${k}`)).json();
   },
@@ -55,6 +68,7 @@ const real = {
   },
 
   // POST /documents (multipart: file) -> { id, status }
+  // On failure the error message is the backend's `detail`.
   uploadDocument(file, onProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -62,8 +76,15 @@ const real = {
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
-        else reject(new Error(xhr.statusText || 'Upload failed'));
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch {
+            reject(httpError(xhr.status, 'Unexpected response from the server'));
+          }
+        } else {
+          reject(httpError(xhr.status, extractDetail(xhr.responseText, xhr.statusText || `HTTP ${xhr.status}`)));
+        }
       };
       xhr.onerror = () => reject(new Error('Network error'));
       const form = new FormData();
@@ -77,12 +98,30 @@ const real = {
     await request(`/documents/${id}`, { method: 'DELETE' });
   },
 
-  // GET /documents/{id}/pages/{n}/image -> image/png (rendered by pdf2image)
-  // Fetched as a blob so the Authorization header can be sent.
+  // GET /documents/{id}/pages/{n}/image -> image/png (the preprocessed page image
+  // that the OCR boxes refer to). Fetched as a blob so the Authorization header can be sent.
   async getPageImage(docId, page) {
     const res = await request(`/documents/${docId}/pages/${page}/image`);
     return URL.createObjectURL(await res.blob());
   },
 };
 
-export const api = USE_MOCK ? mockApi : real;
+// On 401/403 from an authenticated call: clear the session and send the user to
+// the login page (via onUnauthorized), then still rethrow so callers can stop.
+// Login itself is excluded: a wrong password is a 401 that must stay on the form.
+function guard(impl) {
+  const out = {};
+  for (const [name, fn] of Object.entries(impl)) {
+    out[name] = async (...args) => {
+      try {
+        return await fn(...args);
+      } catch (e) {
+        if (name !== 'login' && token && isAuthError(e)) onUnauthorized?.(e);
+        throw e;
+      }
+    };
+  }
+  return out;
+}
+
+export const api = guard(USE_MOCK ? mockApi : real);

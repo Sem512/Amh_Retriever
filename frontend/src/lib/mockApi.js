@@ -8,11 +8,19 @@ const DOCS = [
   { id: 'd3', title: 'የዩኒቨርሲቲ ምርምር ማሳተሚያ መመሪያ', pages: 2, status: 'indexed', uploaded_at: '2026-09-09' },
 ];
 
-const C = (id, doc_id, page, bbox, text) => ({ chunk_id: id, doc_id, page, bbox, text });
+// A chunk has either one `bbox` (legacy single box) or `bboxes` (one box per line,
+// with `lines` holding the text drawn in each box).
+const C = (id, doc_id, page, bbox, text, extra = {}) => ({ chunk_id: id, doc_id, page, bbox, text, ...extra });
 const CHUNKS = [
   C('c1', 'd1', 1, { x: 0.1, y: 0.18, w: 0.8, h: 0.13 }, 'ማንኛውም ሰው ከስራ የሚያገኘው ገቢ በዚህ አዋጅ መሠረት የሥራ ግብር ይከፈልበታል።'),
   C('c2', 'd1', 1, { x: 0.1, y: 0.5, w: 0.8, h: 0.13 }, 'ግብር ከፋይ ዓመታዊ የገቢ መግለጫውን ከዓመቱ መጨረሻ በኋላ በአራት ወር ውስጥ ማቅረብ አለበት።'),
-  C('c3', 'd1', 2, { x: 0.1, y: 0.28, w: 0.8, h: 0.13 }, 'የገቢ ግብር ሕግ ከሚፈቅደው በላይ የዘገየ ክፍያ ተጨማሪ ቅጣት ያስከትላል።'),
+  C('c3', 'd1', 2, null, 'የገቢ ግብር ሕግ ከሚፈቅደው በላይ የዘገየ ክፍያ ተጨማሪ ቅጣት ያስከትላል።', {
+    bboxes: [
+      { x: 0.1, y: 0.28, w: 0.8, h: 0.045 },
+      { x: 0.1, y: 0.325, w: 0.45, h: 0.045 },
+    ],
+    lines: ['የገቢ ግብር ሕግ ከሚፈቅደው በላይ የዘገየ ክፍያ', 'ተጨማሪ ቅጣት ያስከትላል።'],
+  }),
   C('c4', 'd2', 1, { x: 0.1, y: 0.22, w: 0.8, h: 0.13 }, 'ሠራተኛው ዓመታዊ የዕረፍት ፈቃድ የማግኘት መብት አለው።'),
   C('c5', 'd2', 2, { x: 0.1, y: 0.4, w: 0.8, h: 0.13 }, 'የሥራ ስንብት ክፍያ ከአሠሪው በሕግ በተወሰነው መጠን ይከፈላል።'),
   C('c6', 'd3', 1, { x: 0.1, y: 0.3, w: 0.8, h: 0.13 }, 'ተማሪዎች የምረቃ ጽሑፋቸውን ለቤተ መጻሕፍት በዲጂታል ቅጂ ማስረከብ አለባቸው።'),
@@ -56,12 +64,18 @@ export function mockSearch(query, k = 10) {
         pages_total: doc.pages,
         score: Math.min(0.99, 0.35 + score * 0.6),
         snippet: c.text,
-        bbox: c.bbox,
+        ...(c.bboxes ? { bboxes: c.bboxes } : { bbox: c.bbox }),
       };
     });
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Behave like the real backend: admin calls need the token issued by login().
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+const requireAdmin = () => {
+  if (sessionStorage.getItem('token') !== 'mock-admin-token') throw httpError(401, 'Token expired or invalid');
+};
 let docs = [...DOCS];
 
 async function drawPage(docId, page) {
@@ -95,6 +109,16 @@ async function drawPage(docId, page) {
   for (let y = 140; y < H - 100; y += 26) g.fillRect(60, y, W - 120 - ((y * 7) % 160), 8);
 
   for (const c of CHUNKS.filter((x) => x.doc_id === docId && x.page === page)) {
+    if (c.bboxes) {
+      c.bboxes.forEach((b, i) => {
+        g.fillStyle = '#FFFFFF';
+        g.fillRect(b.x * W - 6, b.y * H - 4, b.w * W + 12, b.h * H + 8);
+        g.fillStyle = '#111';
+        g.font = '26px "Noto Serif Ethiopic", serif';
+        g.fillText(c.lines[i], b.x * W, b.y * H + 30);
+      });
+      continue;
+    }
     const bx = c.bbox.x * W;
     const by = c.bbox.y * H;
     const bw = c.bbox.w * W;
@@ -133,13 +157,18 @@ export const mockApi = {
   },
   async listDocuments() {
     await wait(150);
+    requireAdmin();
     return docs.map((d) => ({ ...d }));
   },
   async uploadDocument(file, onProgress) {
+    requireAdmin();
     for (let i = 1; i <= 5; i++) {
       await wait(120);
       onProgress?.(i / 5);
     }
+    // Failures the real backend can report (its `detail` text reaches the user).
+    if (file.size === 0) throw httpError(422, 'The uploaded file is empty');
+    if (/fail/i.test(file.name)) throw httpError(503, 'OCR service unavailable: could not read page 1');
     const id = `d${Date.now()}`;
     docs = [
       { id, title: file.name.replace(/\.[^.]+$/, ''), pages: 1, status: 'processing', uploaded_at: new Date().toISOString().slice(0, 10) },
@@ -152,6 +181,9 @@ export const mockApi = {
   },
   async deleteDocument(id) {
     await wait(150);
+    requireAdmin();
+    if (docs.find((d) => d.id === id)?.status === 'processing')
+      throw httpError(409, 'Document is still being indexed and cannot be deleted yet');
     docs = docs.filter((d) => d.id !== id);
   },
   async getPageImage(docId, page) {

@@ -31,6 +31,9 @@ export default function LoginPage() {
   return (
     <main className="mx-auto w-full max-w-sm p-6 pt-16">
       <h1 className="mb-6 font-serif text-2xl font-bold">{t('loginTitle')}</h1>
+      {loc.state?.expired && (
+        <p className="mb-4 rounded-md bg-marker/25 px-3 py-2 text-sm" role="status">{t('sessionExpired')}</p>
+      )}
       <form onSubmit={submit} className="space-y-4">
         <div>
           <label htmlFor="u" className="mb-1 block text-sm font-medium">{t('username')}</label>

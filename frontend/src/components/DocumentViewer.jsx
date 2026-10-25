@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { bboxToStyle, formatScore } from '../lib/bbox';
+import { bboxToStyle, formatScore, getBoxes } from '../lib/bbox';
 import { useI18n } from '../lib/i18n';
 
 const ZOOMS = [0.6, 0.8, 1, 1.25, 1.5, 2, 2.5];
@@ -78,22 +78,26 @@ export default function DocumentViewer({ result, results, hasPrev, hasNext, onPr
         {state === 'ready' && (
           <div className="relative mx-auto shadow-lg" style={{ width: `${ZOOMS[zoomIdx] * 100}%` }}>
             <img src={img} alt={`${result.title} — ${t('page')} ${page}`} className="block w-full select-none" draggable={false} />
-            {onPage.map((r) => {
+            {onPage.flatMap((r) => {
               const active = r.chunk_id === result.chunk_id;
-              return (
+              // One rectangle per box; the first box of the active result is
+              // the scroll target and carries the accessible label.
+              return getBoxes(r).map((box, i) => (
                 <div
-                  key={r.chunk_id}
-                  ref={active ? activeRef : null}
-                  style={bboxToStyle(r.bbox)}
+                  key={`${r.chunk_id}-${i}`}
+                  ref={active && i === 0 ? activeRef : null}
+                  style={bboxToStyle(box)}
                   title={`${formatScore(r.score)} ${t('match')}`}
                   className={
                     active
                       ? 'absolute rounded-sm border-2 border-[#C58F00] bg-marker/40 mix-blend-multiply'
                       : 'absolute rounded-sm border border-marker bg-marker/15 mix-blend-multiply'
                   }
-                  aria-label={active ? r.snippet : undefined}
+                  aria-label={active && i === 0 ? r.snippet : undefined}
+                  data-chunk={r.chunk_id}
+                  data-active={active ? 'true' : undefined}
                 />
-              );
+              ));
             })}
           </div>
         )}

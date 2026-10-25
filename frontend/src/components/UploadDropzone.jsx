@@ -9,27 +9,30 @@ export default function UploadDropzone({ onUploaded }) {
   const { t } = useI18n();
   const inputRef = useRef(null);
   const [over, setOver] = useState(false);
-  const [jobs, setJobs] = useState([]); // {name, progress, error}
+  const [jobs, setJobs] = useState([]); // {id, name, progress, error}
+  const nextId = useRef(1); // rows are keyed by id: two files may share a name
 
-  const patch = (name, p) => setJobs((j) => j.map((x) => (x.name === name ? { ...x, ...p } : x)));
+  const patch = (id, p) => setJobs((j) => j.map((x) => (x.id === id ? { ...x, ...p } : x)));
 
   async function handle(files) {
     for (const f of files) {
+      const id = nextId.current++;
       if (!OK.includes(f.type)) {
-        setJobs((j) => [...j, { name: f.name, progress: 0, error: t('uploadBadType') }]);
+        setJobs((j) => [...j, { id, name: f.name, progress: 0, error: t('uploadBadType') }]);
         continue;
       }
       if (f.size > MAX) {
-        setJobs((j) => [...j, { name: f.name, progress: 0, error: t('uploadTooBig') }]);
+        setJobs((j) => [...j, { id, name: f.name, progress: 0, error: t('uploadTooBig') }]);
         continue;
       }
-      setJobs((j) => [...j, { name: f.name, progress: 0 }]);
+      setJobs((j) => [...j, { id, name: f.name, progress: 0 }]);
       try {
-        await api.uploadDocument(f, (p) => patch(f.name, { progress: p }));
-        patch(f.name, { progress: 1, done: true });
+        await api.uploadDocument(f, (p) => patch(id, { progress: p }));
+        patch(id, { progress: 1, done: true });
         onUploaded?.();
       } catch (e) {
-        patch(f.name, { error: e.message });
+        // e.message is the backend's `detail` (see api.js)
+        patch(id, { error: e.message || t('uploadFailed') });
       }
     }
   }
@@ -50,8 +53,8 @@ export default function UploadDropzone({ onUploaded }) {
       </div>
       {jobs.length > 0 && (
         <ul className="mt-3 space-y-2" aria-live="polite">
-          {jobs.map((j, i) => (
-            <li key={`${j.name}-${i}`} className="rounded-md border border-rule bg-panel px-3 py-2 text-sm">
+          {jobs.map((j) => (
+            <li key={j.id} className="rounded-md border border-rule bg-panel px-3 py-2 text-sm">
               <div className="flex justify-between gap-3">
                 <span className="truncate">{j.name}</span>
                 <span className={j.error ? 'text-danger' : 'text-mute'}>{j.error ?? `${Math.round(j.progress * 100)}%`}</span>

@@ -145,6 +145,42 @@
  },
  {
   "id": "TC-25",
+  "name": "A result with a bboxes array draws one highlight box per entry (2 boxes for a two-line passage)",
+  "passed": true,
+  "detail": "2 boxes"
+ },
+ {
+  "id": "TC-26",
+  "name": "A result with only a single bbox still draws exactly one highlight box (fallback)",
+  "passed": true,
+  "detail": ""
+ },
+ {
+  "id": "TC-27",
+  "name": "An expired or invalid token (401) clears the session and redirects to login with a notice, instead of showing \"no documents\"",
+  "passed": true,
+  "detail": "ክፍለ ጊዜዎ አብቅቷል ወይም ትክክል አይደለም። እባክዎ እንደገና"
+ },
+ {
+  "id": "TC-28",
+  "name": "A failed delete shows the backend message and keeps the document in the list",
+  "passed": true,
+  "detail": "መሰረዝ አልተቻለም፦ busy: Document is still being indexed and cannot be deleted yet"
+ },
+ {
+  "id": "TC-29",
+  "name": "A failed upload shows the backend's detail message, not the HTTP status text",
+  "passed": true,
+  "detail": "fail-scan.pdf OCR service unavailable: could not read page 1"
+ },
+ {
+  "id": "TC-30",
+  "name": "Two uploads with the same file name get separate rows with independent results",
+  "passed": true,
+  "detail": "dup.pdf 100% | dup.pdf The uploaded file is empty"
+ },
+ {
+  "id": "TC-31",
   "name": "No JavaScript or console errors during the whole session",
   "passed": true,
   "detail": ""

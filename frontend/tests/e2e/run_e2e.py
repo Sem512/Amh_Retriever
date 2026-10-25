@@ -115,7 +115,56 @@ async def main():
         no_scroll = await m.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
         record('TC-24', 'No horizontal page scrolling at 390 px width', no_scroll)
 
-        record('TC-25', 'No JavaScript or console errors during the whole session', len(errors) == 0, '; '.join(errors)[:120])
+        # ---- new behaviour: multiple boxes, session expiry, error handling ----
+        await pg.goto(BASE); await search(pg, 'የስራ ግብር መመሪያ')
+        await pg.locator('ol li button').nth(1).click(); await pg.wait_for_timeout(1200)
+        act = pg.locator('section [data-active=true]')
+        styles = [await act.nth(i).get_attribute('style') for i in range(await act.count())]
+        ok = len(styles) == 2 and 'top: 28%' in styles[0] and 'top: 32.5%' in styles[1] and all('left: 10%' in x for x in styles)
+        record('TC-25', 'A result with a bboxes array draws one highlight box per entry (2 boxes for a two-line passage)', ok, f'{len(styles)} boxes')
+
+        await pg.locator('ol li button').nth(0).click(); await pg.wait_for_timeout(1000)
+        record('TC-26', 'A result with only a single bbox still draws exactly one highlight box (fallback)',
+               await pg.locator('section [data-active=true]').count() == 1)
+
+        async def admin_login():
+            await pg.goto(BASE + '/login'); await pg.fill('#u', 'admin'); await pg.fill('#p', 'admin123')
+            await pg.click('form button'); await pg.wait_for_url('**/admin'); await pg.wait_for_timeout(500)
+
+        await admin_login()
+        await pg.evaluate("sessionStorage.setItem('token', 'expired-token')")
+        await pg.reload(); await pg.wait_for_url('**/login'); await pg.wait_for_timeout(300)
+        notice = await pg.locator('[role=status]').inner_text()
+        cleared = await pg.evaluate("sessionStorage.getItem('token') === null && sessionStorage.getItem('user') === null")
+        record('TC-27', 'An expired or invalid token (401) clears the session and redirects to login with a notice, instead of showing "no documents"',
+               'ክፍለ ጊዜዎ አብቅቷል' in notice and cleared and await pg.locator('text=ምንም ሰነድ').count() == 0, notice[:40])
+
+        await admin_login()
+        await pg.set_input_files('input[type=file]', {'name': 'busy.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.4'})
+        await pg.wait_for_timeout(1300)
+        pg.once('dialog', lambda d: asyncio.ensure_future(d.accept()))
+        await pg.locator('table tbody tr', has_text='busy').locator('button:has-text("ሰርዝ")').click(); await pg.wait_for_timeout(700)
+        alert = await pg.locator('main [role=alert]').first.inner_text()
+        record('TC-28', 'A failed delete shows the backend message and keeps the document in the list',
+               'cannot be deleted yet' in alert and await pg.locator('table tbody tr', has_text='busy').count() == 1, alert[:80])
+
+        await pg.set_input_files('input[type=file]', {'name': 'fail-scan.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.4'})
+        await pg.wait_for_timeout(1300)
+        up = await pg.locator('ul[aria-live] li', has_text='fail-scan.pdf').inner_text()
+        record('TC-29', "A failed upload shows the backend's detail message, not the HTTP status text",
+               'OCR service unavailable: could not read page 1' in up, up.replace('\n', ' ')[:80])
+
+        await pg.set_input_files('input[type=file]', [
+            {'name': 'dup.pdf', 'mimeType': 'application/pdf', 'buffer': b'%PDF-1.4'},
+            {'name': 'dup.pdf', 'mimeType': 'application/pdf', 'buffer': b''}])
+        await pg.wait_for_timeout(2200)
+        rows = pg.locator('ul[aria-live] li', has_text='dup.pdf')
+        texts = [await rows.nth(i).inner_text() for i in range(await rows.count())]
+        record('TC-30', 'Two uploads with the same file name get separate rows with independent results',
+               len(texts) == 2 and sum('empty' in t for t in texts) == 1 and sum('100%' in t for t in texts) == 1,
+               ' | '.join(t.replace('\n', ' ') for t in texts)[:100])
+
+        record('TC-31', 'No JavaScript or console errors during the whole session', len(errors) == 0, '; '.join(errors)[:120])
         await b.close()
 
     passed = sum(r['passed'] for r in results)

@@ -1,9 +1,15 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { api, setToken } from './api';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { api, setToken, setUnauthorizedHandler } from './api';
 
 const AuthCtx = createContext(null);
 
 export function AuthProvider({ children }) {
+  const nav = useNavigate();
+  const loc = useLocation();
+  const locRef = useRef(loc);
+  locRef.current = loc;
+
   const [user, setUser] = useState(() => {
     try {
       return JSON.parse(sessionStorage.getItem('user')) || null;
@@ -26,6 +32,16 @@ export function AuthProvider({ children }) {
     sessionStorage.removeItem('user');
     setUser(null);
   }, []);
+
+  // Expired or invalid token (401/403 on an authenticated call): clear the
+  // session and go to the login page, remembering where the user was.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      logout();
+      nav('/login', { replace: true, state: { from: locRef.current.pathname, expired: true } });
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [logout, nav]);
 
   const value = useMemo(
     () => ({ user, isAdmin: user?.role === 'admin', login, logout }),
