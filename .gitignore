@@ -34,8 +34,10 @@ huggingface/
 # Archives (contents are committed unpacked)
 *.zip
 
-# Claude Code local harness state
+# Claude Code local harness state, and locally installed agent skills
 .claude/
+.agents/
+skills-lock.json
 
 # OS / editor
 .DS_Store

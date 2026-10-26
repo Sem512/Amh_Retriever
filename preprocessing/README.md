@@ -1,20 +1,11 @@
-# Preprocessing — Lane A (Kibreab)
+# Image cleanup and finding text on signs (Kibreab)
 
-PDF-to-page-image splitting and OpenCV cleanup: deskew, denoise, binarize, crop.
-Owns the first stage of the ingestion pipeline, ahead of OCR.
+Delivers `clean(photo, mode)`, `find_lines(image)` and `crop_line(image, corners)`. Their exact inputs
+and outputs are in [`ARCHITECTURE.md`](../ARCHITECTURE.md) section 3, and the per-mode behaviour is in
+section 2.
 
-See [`ARCHITECTURE.md`](../ARCHITECTURE.md):
-- §1 — component diagram, ingestion path
-- **§2.1 — the contract this lane must produce: `PreprocessedPage`.** This is
-  the team boundary with OCR (Lane B / Ferid) — freeze this shape before
-  building against it.
-
-Key decision already made in the architecture doc, worth reading before
-writing code: the viewer renders the *preprocessed* image, not the original
-PDF page, specifically so OCR bounding boxes never need an inverse-transform
-back to original coordinates. That means this lane's output geometry is
-what OCR, chunking, and the frontend highlight overlay all inherit — get the
-image dimensions and `deskew_angle_deg` fields right and everything
-downstream stays simple.
+The one rule everything downstream depends on: **the image `clean()` returns is the image the viewer
+shows, and every box (OCR lines, sign lines, highlights) is in its pixel coordinates.** Its long side
+must be at most 2500 px.
 
 Nothing has been built here yet.

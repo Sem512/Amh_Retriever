@@ -1,20 +1,21 @@
-# Amharic Document Digitization & Semantic Retrieval
+# Amharic Image Translator
 
-Senior project — ingests scanned Amharic PDFs, OCRs and normalizes the text,
-and lets users semantically search the corpus with results highlighted back
-to the source page. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full
-system design: component diagram, data contracts, schema, search flow, auth
-boundary, and the riskiest decisions the team should discuss explicitly.
+Senior project. A user uploads one photo of Amharic text (a document, a sign or handwriting); the app
+reads the Amharic, translates it to English, and shows both side by side with each sentence's lines
+highlighted on the image. Runs locally, free and open-source only. The full design, lane contracts,
+API contract and schedule are in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-## Team & lanes
+(The repo name is historical: the project was a semantic-retrieval system until the scope changed in
+October 2026.)
+
+## Team and lanes
 
 | Lane | Owner | Directory | Status |
 |---|---|---|---|
-| A — Preprocessing | Kibreab | [`preprocessing/`](preprocessing/) | not started |
-| B — OCR + normalization | Ferid | [`ocr/`](ocr/) | not started |
-| C — Backend + retrieval | Semir | [`backend/`](backend/) | Phase 1 POC done — see [`backend/poc/`](backend/poc/) |
-| D — Frontend | Yassin | [`frontend/`](frontend/) | delivered, tested against a mock backend only — real-backend integration pending |
+| Image cleanup, finding text on signs | Kibreab | [`preprocessing/`](preprocessing/) | not started |
+| OCR (Tesseract) | Ferid | [`ocr/`](ocr/) | not started |
+| Sentences, translation, API | Semir | [`backend/`](backend/) | API skeleton with contract tests; NLLB set up |
+| Frontend, user tests | Yassin | [`frontend/`](frontend/) | built for the old search API; needs the upload + side-by-side rework |
 
-Each lane directory has its own README pointing at the exact section of
-`ARCHITECTURE.md` that defines its inputs/outputs — those contracts are the
-whole coordination surface between lanes, freeze them before building.
+Each lane builds against the function contracts in `ARCHITECTURE.md` section 3; those are the whole
+coordination surface between lanes.

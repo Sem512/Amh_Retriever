@@ -1,25 +1,14 @@
-# OCR + Normalization — Lane B (Ferid, output-structuring co-owned with Semir)
+# OCR (Ferid)
 
-OCR engine (Tesseract `amh` / EasyOCR) over preprocessed page images, plus the
-Amharic normalizer that folds homophone characters (ሀ/ሐ/ኀ, ሠ/ሰ, ዐ/አ, ጸ/ፀ) and
-canonicalizes punctuation and digits.
+Delivers `read_page(image)` (whole page: one entry per text line, with its pixel box, in reading
+order) and `read_line(line_image)` (one sign line). Exact inputs and outputs are in
+[`ARCHITECTURE.md`](../ARCHITECTURE.md) section 3; engine choices are in section 5.
 
-See [`ARCHITECTURE.md`](../ARCHITECTURE.md):
-- §2.1 — `PreprocessedPage`, the input this lane consumes from preprocessing
-  (Lane A / Kibreab)
-- §2.2 — `OCRWord`, word-level output with bounding boxes — line-level bboxes
-  are not enough, highlighting depends on per-word boxes
-- §2.3 — normalization rules, and why **both** `text` (raw OCR) and
-  `norm_text` (normalized) must be kept permanently, never just one
-- **§2.4 — the contract this lane must produce: `Chunk`.** This is the team
-  boundary with backend/retrieval (Lane C / Semir) — freeze this shape
-  before building against it. Semir's Phase 1 POC (`../backend/poc/`) is
-  currently running against placeholder chunks in this exact shape; swap
-  them for real output here as soon as it exists.
+Engine: Tesseract 5 with `tessdata_best`. Compare `amh` with `script/Ethiopic` on the printed test
+photos and keep the one with the lower character error rate. Handwriting goes through Tesseract as an
+experimental baseline. Engine internals (models, page-segmentation modes, thresholds) are Ferid's call.
 
-Split of ownership within this lane: Ferid owns OCR engine internals
-(language data, confidence thresholds); Semir owns turning that output into
-the structured `Chunk` format the database and embedding pipeline consume.
-Don't assume engine-tuning work belongs to Semir — ask first.
+Spelling is never changed after OCR: no homophone folding, because the translation model learned
+Amharic as people actually write it.
 
 Nothing has been built here yet.

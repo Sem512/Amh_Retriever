@@ -2,10 +2,11 @@
 
 React 18 + Vite + Tailwind. Owner: Yassin Bedru.
 
-> The authoritative API contract lives in [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §2.6 and §5; the
-> table below is the version this app was built against, and §2.6 adopts it with a few extensions
-> (`bboxes` list, preprocessed page image, `queued` status). Report chapter, annexes, defense deck, UAT
-> kit and design figures are in [`docs/`](docs/).
+> **The project scope changed (Oct 2026):** it is now an image translator. The API is a single
+> `POST /translate` (photo + mode → image + Amharic/English segments with `bboxes`), specified in
+> [`../ARCHITECTURE.md`](../ARCHITECTURE.md) section 4. The table below is the old search API this app
+> was built against. Report chapter, annexes, defense deck, UAT kit and design figures are in
+> [`docs/`](docs/).
 
 ## Run
 ```bash

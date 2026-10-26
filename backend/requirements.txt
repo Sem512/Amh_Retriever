@@ -1,6 +1,14 @@
-# POC dependencies — Phase 1 only.
-# Install torch separately first, from the CPU-only index, or this will
-# pull CUDA wheels you don't need and don't have the GPU for:
-#   pip install --index-url https://download.pytorch.org/whl/cpu torch
-sentence-transformers>=3.0
-chromadb>=0.5
+fastapi
+python-multipart
+uvicorn
+numpy
+opencv-python-headless
+ctranslate2
+transformers
+sentencepiece
+nvidia-cublas-cu12; sys_platform == "win32"
+pytest
+httpx
+
+# One-time model conversion only (ARCHITECTURE.md section 9) also needs CPU torch:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
