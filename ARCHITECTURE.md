@@ -54,9 +54,11 @@ folder of sample photos, so nobody waits for anybody.
 | Kibreab | `clean(photo, mode)` | photo, mode → image, long side ≤ 2500 px. **This is the image the viewer shows; every box refers to it.** |
 | Kibreab | `find_lines(image)` | → list of line corners |
 | Kibreab | `crop_line(image, corners)` | → upright line image, dark text on light, ~10 px margin |
-| Ferid | `read_page(image)` | → `[{"text": str, "box": (l, t, w, h)}, ...]`, one per text line, in reading order |
-| Ferid | `read_line(line_image)` | → `str` |
-| Semir | `to_sentences(lines)` | `[{"text", "box"}]` → `[{"amharic": str, "boxes": [box, ...]}]`. Joins lines, splits after `።` `፧` `!`, turns `፡` into a space, rejoins words split across lines, **never changes spelling**. |
+| Ferid | `read_page(image)` | → `[{"text": str, "box": (l, t, w, h)}, ...]`, one per text line, in reading order. Text is already normalized (below); lines that end up empty are dropped. |
+| Ferid | `read_line(line_image)` | → `str`, normalized |
+| Ferid | `normalize(text)` | Fixes OCR mistakes: Unicode NFC; `፡፡` and `::` → `።`; `፡` or a stray `:` between Amharic letters → a space; extra whitespace collapsed. **Never re-spells a correctly read word.** New rules are added only when real OCR output shows a mistake, each with a test. Runs inside both readers. |
+| Ferid | `fold_homophones(text)` | Merges same-sound letters (ሐ ኀ → ሀ, ሠ → ሰ, ዐ → አ, ፀ → ጸ). **Not called by the pipeline.** Only the scoring experiment uses it, to test whether folding improves translation; it ships only if the scores say so. |
+| Semir | `to_sentences(lines)` | `[{"text", "box"}]` → `[{"amharic": str, "boxes": [box, ...]}]`. Joins lines, splits after `።` `፧` `!`, rejoins words split across lines, **never changes spelling**. Character-level fixes (including `፡` → space) are already done by `normalize`. |
 | Semir | `translate(sentences)` | `list[str]` Amharic → `list[str]` English, same order |
 | Semir | `pipeline.run(photo, mode)` | Wires the above. A sign line's box is the upright rectangle enclosing its corners. |
 
@@ -187,12 +189,26 @@ One-time model conversion. It also needs CPU torch and downloads about 2.5 GB.
 .venv\Scripts\ct2-transformers-converter --model facebook/nllb-200-distilled-600M --quantization int8 --output_dir models\nllb-200-distilled-600M-ct2-int8 --copy_files tokenizer.json sentencepiece.bpe.model tokenizer_config.json special_tokens_map.json
 ```
 
+OCR model files (about 19 MB). `tesserocr` from `requirements.txt` already bundles Tesseract 5.5, so
+nothing is installed system-wide:
+
+```
+mkdir models\tessdata
+curl.exe -L -o models\tessdata\amh.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/amh.traineddata
+curl.exe -L -o models\tessdata\Ethiopic.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/script/Ethiopic.traineddata
+```
+
+`OCR_LANG=Ethiopic` switches the reader to the Ethiopic model; the default is `amh`.
+
 Run the API and the tests, both from the repo root:
 
 ```
 .venv\Scripts\uvicorn backend.app:app
-.venv\Scripts\python -m pytest backend
+.venv\Scripts\python -m pytest backend ocr
 ```
+
+The OCR tests draw known Amharic text with the Ebrima font that ships with Windows, so they need no
+photos. They skip themselves, with a reason, if the model files or the font are missing.
 
 ## 10. Measurements
 
@@ -211,6 +227,15 @@ laptop (i5-10500H, GTX 1650):
 - transformers warns about an "incorrect regex pattern" when the tokenizer loads. The warning is
   aimed at Mistral models: the tokens match the original SentencePiece model for whitespace-stripped
   text, which is what `translate()` sends.
+- **OCR, 4 Nov 2026, generated page** (4 lines of Ebrima text, so clean input and an upper bound):
+
+  | Model | Lines found | Character error rate |
+  |---|---|---|
+  | `amh` (`tessdata_best`) | 4 of 4, in order | **1.1%** (2 errors in 189 characters) |
+  | `script/Ethiopic` | 4 of 4, in order | 6.3% (12 errors in 189 characters) |
+
+  `amh` also wrote the full stop as `፡፡` on two lines, which is why `normalize` exists. This is one
+  clean page: the choice between the models is made on the real printed photos.
 - Found during the test: cuBLAS loads on first use, not at model load. `_open()` therefore runs one
   tiny translation at startup, so a broken GPU falls back to the CPU there rather than failing inside
   a user's request.

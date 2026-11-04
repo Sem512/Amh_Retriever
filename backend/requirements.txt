@@ -2,7 +2,9 @@ fastapi
 python-multipart
 uvicorn
 numpy
+pillow
 opencv-python-headless
+tesserocr
 ctranslate2
 transformers
 sentencepiece
