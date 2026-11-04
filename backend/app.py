@@ -3,7 +3,9 @@
 Contract: ARCHITECTURE.md section 4. Run from the repo root: uvicorn backend.app:app
 """
 import base64
+import logging
 import time
+from contextlib import asynccontextmanager
 from typing import Literal
 
 import cv2
@@ -16,7 +18,16 @@ from backend import pipeline
 MAX_BYTES = 10 * 1024 * 1024
 JPEG_MAGIC, PNG_MAGIC = b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n"
 
-app = FastAPI(title="Amharic image translator")
+@asynccontextmanager
+async def lifespan(app):
+    try:
+        pipeline.warm_up()
+    except Exception:  # missing model files must not stop the server: sign/handwriting placeholders and the contract still work
+        logging.exception("Model warm-up failed; the models will load on the first request instead")
+    yield
+
+
+app = FastAPI(title="Amharic image translator", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["POST"], allow_headers=["*"])
 
 

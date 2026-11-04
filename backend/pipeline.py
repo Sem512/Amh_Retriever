@@ -4,6 +4,7 @@ run() returns (image, segments): `image` is the array every box refers to, and e
 {"amharic": str, "english": str, "boxes": [(left, top, width, height), ...]} in pixels of `image`.
 """
 import cv2
+import numpy as np
 
 from backend.translate import translate
 from ocr.reader import read_page
@@ -25,6 +26,12 @@ def run(photo, mode):
     # shortcut: one OCR line = one segment, so a sentence broken across lines is translated in halves; replace with to_sentences()
     english = translate([line["text"] for line in lines])
     return image, [{"amharic": line["text"], "english": en, "boxes": [line["box"]]} for line, en in zip(lines, english)]
+
+
+def warm_up():
+    """Loads the OCR engine and the translation model now, so the first photo is not 20 s slower than the rest."""
+    read_page(np.full((100, 300, 3), 255, np.uint8))
+    translate(["ሰላም።"])
 
 
 def _placeholder(image):

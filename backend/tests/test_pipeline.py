@@ -61,6 +61,29 @@ def test_large_photo_is_resized_and_boxes_refer_to_the_resized_image(fakes):
     assert max(image.shape[:2]) == pipeline.MAX_SIDE
 
 
+def test_warm_up_loads_both_engines(fakes):
+    pipeline.warm_up()
+    assert fakes["read"] == 1 and fakes["translated"] == ["ሰላም።"]
+
+
+def test_server_start_warms_the_models(monkeypatch):
+    called = []
+    monkeypatch.setattr(pipeline, "warm_up", lambda: called.append(1))
+    with TestClient(app_module.app):
+        pass
+    assert called == [1]
+
+
+def test_failed_warm_up_does_not_stop_the_server(monkeypatch, fakes):
+    def no_models():
+        raise RuntimeError("no model files")
+
+    monkeypatch.setattr(pipeline, "warm_up", no_models)
+    png = cv2.imencode(".png", photo())[1].tobytes()
+    with TestClient(app_module.app) as client:
+        assert client.post("/translate", files={"file": ("p.png", png, "image/png")}).status_code == 200
+
+
 def test_api_document_mode_end_to_end_with_fakes(fakes):
     png = cv2.imencode(".png", photo())[1].tobytes()
     r = TestClient(app_module.app).post("/translate", files={"file": ("p.png", png, "image/png")}, data={"mode": "document"})

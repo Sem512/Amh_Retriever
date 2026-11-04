@@ -246,8 +246,11 @@ laptop (i5-10500H, GTX 1650):
   | A 48-line CDC flyer scan, warm | 48 | 2.4 s |
   | A blank photo | 0 | 7 ms |
 
-  The first request after the server starts is far over the 10-second target, because the models load
-  on demand. Warm requests are well inside it.
+  The first request after the server starts was far over the 10-second target, because the models load
+  on demand. **Fixed the same day:** the server now loads both models at startup (17.6 s, once), and the
+  first photo after start takes 1.3 s. If the warm-up fails, for example because model files are missing,
+  it logs a warning and the server still starts, so the placeholder modes keep working; the models then
+  load on the first request, as before.
 - Found during the test: cuBLAS loads on first use, not at model load. `_open()` therefore runs one
   tiny translation at startup, so a broken GPU falls back to the CPU there rather than failing inside
   a user's request.
