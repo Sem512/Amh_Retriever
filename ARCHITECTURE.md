@@ -60,7 +60,7 @@ folder of sample photos, so nobody waits for anybody.
 | Ferid | `fold_homophones(text)` | Merges same-sound letters (ሐ ኀ → ሀ, ሠ → ሰ, ዐ → አ, ፀ → ጸ). **Not called by the pipeline.** Only the scoring experiment uses it, to test whether folding improves translation; it ships only if the scores say so. |
 | Semir | `to_sentences(lines)` | `[{"text", "box"}]` → `[{"amharic": str, "boxes": [box, ...]}]`. Joins lines, splits after `።` `፧` `!`, rejoins words split across lines, **never changes spelling**. Character-level fixes (including `፡` → space) are already done by `normalize`. |
 | Semir | `translate(sentences)` | `list[str]` Amharic → `list[str]` English, same order |
-| Semir | `pipeline.run(photo, mode)` | Wires the above. A sign line's box is the upright rectangle enclosing its corners. |
+| Semir | `pipeline.run(photo, mode)` | Wires the above. A sign line's box is the upright rectangle enclosing its corners. **Today (4 Nov):** only `document` mode is real. It resizes the photo, runs `read_page`, translates, and treats **each OCR line as one segment**. That is temporary: a sentence that runs across lines is translated in halves until `to_sentences` replaces it. `sign` and `handwriting` still return a fixed placeholder. |
 
 ## 4. API contract (backend → frontend)
 
@@ -236,6 +236,18 @@ laptop (i5-10500H, GTX 1650):
 
   `amh` also wrote the full stop as `፡፡` on two lines, which is why `normalize` exists. This is one
   clean page: the choice between the models is made on the real printed photos.
+- **Through the API, 4 Nov 2026, `document` mode with the real engines** (resize only for cleanup, one
+  segment per OCR line):
+
+  | Photo | Segments | Time |
+  |---|---|---|
+  | A real printed scan (6 lines), **first request after start** | 6 | **24.8 s**: it loads the translation model and the OCR engine |
+  | The same scan, warm | 6 | 1.4 s |
+  | A 48-line CDC flyer scan, warm | 48 | 2.4 s |
+  | A blank photo | 0 | 7 ms |
+
+  The first request after the server starts is far over the 10-second target, because the models load
+  on demand. Warm requests are well inside it.
 - Found during the test: cuBLAS loads on first use, not at model load. `_open()` therefore runs one
   tiny translation at startup, so a broken GPU falls back to the CPU there rather than failing inside
   a user's request.

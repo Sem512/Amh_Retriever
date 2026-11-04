@@ -5,17 +5,28 @@ run() returns (image, segments): `image` is the array every box refers to, and e
 """
 import cv2
 
+from backend.translate import translate
+from ocr.reader import read_page
+
 MAX_SIDE = 2500
 
 
-def run(photo, mode):
-    # shortcut: fixed sample so the frontend can build against the real contract; replace with
-    # clean()/read_page()/to_sentences()/translate() once Kibreab's and Ferid's functions land (week 2)
+def _resized(photo):
     scale = min(1.0, MAX_SIDE / max(photo.shape[:2]))
-    image = cv2.resize(photo, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else photo
+    return cv2.resize(photo, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else photo
+
+
+def run(photo, mode):
+    # shortcut: resize stands in for Kibreab's clean(); swap it in when his function lands
+    image = _resized(photo)
+    if mode != "document":
+        return image, _placeholder(image)  # shortcut: sign and handwriting return a fixed sample until their tickets land
+    lines = read_page(image)
+    # shortcut: one OCR line = one segment, so a sentence broken across lines is translated in halves; replace with to_sentences()
+    english = translate([line["text"] for line in lines])
+    return image, [{"amharic": line["text"], "english": en, "boxes": [line["box"]]} for line, en in zip(lines, english)]
+
+
+def _placeholder(image):
     h, w = image.shape[:2]
-    return image, [{
-        "amharic": "ይህ የሙከራ ውጤት ነው።",
-        "english": "This is a test result.",
-        "boxes": [(w // 10, h // 10, w * 8 // 10, h // 20)],
-    }]
+    return [{"amharic": "ይህ የሙከራ ውጤት ነው።", "english": "This is a test result.", "boxes": [(w // 10, h // 10, w * 8 // 10, h // 20)]}]
