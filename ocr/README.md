@@ -1,14 +1,19 @@
-# OCR (Ferid)
+# OCR and normalization (Ferid)
 
-Delivers `read_page(image)` (whole page: one entry per text line, with its pixel box, in reading
-order) and `read_line(line_image)` (one sign line). Exact inputs and outputs are in
-[`ARCHITECTURE.md`](../ARCHITECTURE.md) section 3; engine choices are in section 5.
+Delivers `read_page(image)`, `read_line(line_image)`, `normalize(text)` and `fold_homophones(text)`.
+The contract is in [`ARCHITECTURE.md`](../ARCHITECTURE.md) section 3, the engine choice is in section 5, and
+the model download and test commands are in section 9.
 
-Engine: Tesseract 5 with `tessdata_best`. Compare `amh` with `script/Ethiopic` on the printed test
-photos and keep the one with the lower character error rate. Handwriting goes through Tesseract as an
-experimental baseline. Engine internals (models, page-segmentation modes, thresholds) are Ferid's call.
+- `reader.py`: Tesseract 5 through `tesserocr`, loaded once. `read_page` returns Tesseract's own text lines
+  (normalized, with `(left, top, width, height)` pixel boxes, in reading order); `read_line` reads one
+  cropped sign line. `OCR_LANG` picks `amh` (default) or `Ethiopic`.
+- `normalize.py`: fixes OCR mistakes only and never re-spells a correctly read word. `fold_homophones` is
+  separate and is not part of the pipeline; only the scoring experiment uses it.
+- `tests/`: normalizer tables, plus the real engine on a generated Ebrima page (line count, box overlap,
+  character error rate).
 
-Spelling is never changed after OCR: no homophone folding, because the translation model learned
-Amharic as people actually write it.
+Still to do: choose `amh` or `Ethiopic` and a confidence threshold on the real printed photos, and
+grow `normalize` as real OCR mistakes turn up (each new rule with a test). Handwriting uses the same
+`read_page` path as an experimental baseline.
 
-Nothing has been built here yet.
+Run the tests from the repo root: `python -m pytest ocr`.
