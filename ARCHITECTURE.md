@@ -56,7 +56,7 @@ folder of sample photos, so nobody waits for anybody.
 | Kibreab | `crop_line(image, corners)` | → upright line image, dark text on light, ~10 px margin |
 | Ferid | `read_page(image)` | → `[{"text": str, "box": (l, t, w, h)}, ...]`, one per text line, in reading order. Text is already normalized (below); lines that end up empty are dropped. |
 | Ferid | `read_line(line_image)` | → `str`, normalized |
-| Ferid | `normalize(text)` | Fixes OCR mistakes: Unicode NFC; `፡፡` and `::` → `።`; `፡` or a stray `:` between Amharic letters → a space; extra whitespace collapsed. **Never re-spells a correctly read word.** New rules are added only when real OCR output shows a mistake, each with a test. Runs inside both readers. |
+| Ferid | `normalize(text)` | Fixes OCR mistakes: Unicode NFC; `፡፡` and `::` → `።`; `፡` or a stray `:` between Amharic letters → a space; a space before `።` `፣` `፤` `፥` removed; a line-start `-` or `.` before an Amharic word → the bullet `•`; extra whitespace collapsed. **Never re-spells a correctly read word.** New rules are added only when real OCR output shows a mistake, each with a test. Runs inside both readers. |
 | Ferid | `fold_homophones(text)` | Merges same-sound letters (ሐ ኀ → ሀ, ሠ → ሰ, ዐ → አ, ፀ → ጸ). **Not called by the pipeline.** Only the scoring experiment uses it, to test whether folding improves translation; it ships only if the scores say so. |
 | Semir | `to_sentences(lines)` | `[{"text", "box"}]` → `[{"amharic": str, "boxes": [box, ...]}]`. Joins lines, splits after `።` `፧` `!`, rejoins words split across lines, **never changes spelling**. Character-level fixes (including `፡` → space) are already done by `normalize`. |
 | Semir | `translate(sentences)` | `list[str]` Amharic → `list[str]` English, same order |
@@ -213,7 +213,9 @@ Run the API and the tests, both from the repo root:
 ```
 
 The OCR tests draw known Amharic text with the Ebrima font that ships with Windows, so they need no
-photos. They skip themselves, with a reason, if the model files or the font are missing.
+photos. They skip themselves, with a reason, if the model files or the font are missing. One more test
+checks `normalize` against the private answer key; set `AMH_TEST_PHOTOS` to the private test-photos folder to
+run it, otherwise it skips.
 
 ## 10. Measurements
 
@@ -260,7 +262,30 @@ laptop (i5-10500H, GTX 1650):
 
   The evidence is thin: 8 blocks from 3 sources, a first-pass answer key with one reader, and the margin
   over `Ethiopic` alone is 0.9 points. The choice stands unless the team's own phone photos say
-  otherwise: re-run the command above on a larger set, or set `OCR_LANG` to switch.
+  otherwise: re-run the command above on a larger set, or set `OCR_LANG` to switch. These numbers are
+  from before the normalization rules below; with the rules the order is the same (`amh` 20.3 → 18.9%,
+  `Ethiopic` 17.5 → 16.9%, `amh+Ethiopic` 16.6 → 15.5%).
+- **Normalization rules from real mistakes, 5 Nov 2026** (same 8 blocks, `amh+Ethiopic`, 124 edit
+  operations between the OCR text and the answer key). Mean character error rate **16.6% → 15.5%**.
+
+  | Mistake | How often | Decision |
+  |---|---|---|
+  | A list bullet `•` read as `-` or `.` | 15 times | **Rule.** Line-start `-` or `.` before an Amharic word → `•`. Alone: 16.6% → 15.9%. A real dash at the start of a line is also turned into a bullet, which is harmless for translation. |
+  | A space before `።` `፣` `፤` `፥` | 3 times, all in the 1930 booklet | **Rule.** Space removed. Alone: 16.6% → 16.2%. Thin evidence, but it can never change a letter. |
+  | `እ` read as `አ` at the start of a word (`እና` → `አና`, `እስከ` → `አስከ`) | 18 times, the most common mistake | **Rejected.** `አ` also starts 24 correct words in the answer key (`አዲስ`, `አካላት`), so a rule would re-spell 22 correct lines. A fix for `አና` alone (6 times) is rejected too, because `አና` is a real name. |
+  | `ህ` read as `ሀ`, `ው` as `ወ`, `ን` as `ገ`, `ኒ` as `ነ` and other look-alike letters | about 20 times | **Rejected.** Both letters are real, so only a spelling dictionary could decide. Handled by choosing the model (ticket 03) or, if it helps translation, the letter-merging experiment (ticket 08). |
+  | Missing spaces between words (`ነክጉዳዮችን`) | 16 times | **Rejected.** Needs a word list to tell where to split. |
+  | `COVID-19` read as Ethiopic letters (`ርዐህዐ-ገ9`) | 8 times | **Rejected.** Not recoverable from the text. |
+  | A word separator read as `;` or `:` at the end of a word | 3 times, all in the 1930 booklet | **Rejected.** A real colon can end a modern word, so it cannot be told apart. |
+  | Heading lines the engine did not return at all (flyer `a`, `c`, `f`) | 3 blocks | Not a text mistake: a line-finding question for ticket 05. |
+
+  Two of the rejected rules were tried on the OCR output, and each would have changed correct answer-key
+  text (word-initial `አ` → `እ` changes 22 lines, `ህ` → `ሀ` changes 10). The new test
+  `test_normalize_does_not_respell_the_answer_key` runs when `AMH_TEST_PHOTOS` points at the private
+  folder and skips with a reason otherwise. It lets `normalize` change only spaces and word separators
+  on every answer-key line, so a future rule that edits a letter fails it. The old-print `፡` words in the
+  booklet and one spaced colon in the Fidel page are turned into spaces on purpose by an earlier rule, so
+  those 5 lines are not unchanged, only un-respelled.
 - **Through the API, 4 Nov 2026, `document` mode with the real engines** (resize only for cleanup, one
   segment per OCR line):
 

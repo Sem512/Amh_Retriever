@@ -9,7 +9,9 @@ the model download and test commands are in section 9.
   cropped sign line. `OCR_LANG` picks `amh`, `Ethiopic` or `amh+Ethiopic` (default, both together).
 - `compare_models.py`: `python -m ocr.compare_models <private photos folder>` prints the character error
   rate per block and the mean for each model setting. `scoring.py` holds the `cer` function it shares with the tests.
-- `normalize.py`: fixes OCR mistakes only and never re-spells a correctly read word. `fold_homophones` is
+- `normalize.py`: fixes OCR mistakes only and never re-spells a correctly read word. It also turns a
+  misread line-start bullet (`-`, `.`) into `•` and drops a space before `።` `፣` `፤` `፥`. The mistakes
+  that were rejected as rules, and why, are in `ARCHITECTURE.md` section 10. `fold_homophones` is
   separate and is not part of the pipeline; only the scoring experiment uses it.
 - `tests/`: normalizer tables, plus the real engine on a generated Ebrima page (line count, box overlap,
   character error rate).
