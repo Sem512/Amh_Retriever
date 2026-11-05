@@ -50,9 +50,51 @@ def test_photo_without_text_gives_no_segments(monkeypatch):
     assert pipeline.run(photo(), "document")[1] == []
 
 
-def test_sign_mode_keeps_the_placeholder_and_skips_the_reader(fakes):
+def test_sign_mode_keeps_the_placeholder_until_the_line_finder_lands(fakes, monkeypatch):
+    monkeypatch.setattr(pipeline, "find_lines", None)
     _, segments = pipeline.run(photo(), "sign")
     assert fakes["read"] == 0 and len(segments) == 1
+
+
+@pytest.fixture
+def sign_fakes(monkeypatch):
+    quad = [(10, 20), (110, 10), (115, 40), (15, 52)]  # a slightly tilted line
+    crops = []
+    texts = {1: "ክፍት ነው", 2: "", 3: "መውጫ"}  # the middle line reads as nothing
+
+    def find_lines(image):
+        return [quad, [(0, 0), (5, 0), (5, 5), (0, 5)], [(380, 150), (420, 150), (420, 210), (380, 210)]]  # the last sticks out of a 400x200 image
+
+    def crop_line(image, corners):
+        crops.append(corners)
+        return np.full((30, 90), len(crops), np.uint8)
+
+    monkeypatch.setattr(pipeline, "find_lines", find_lines)
+    monkeypatch.setattr(pipeline, "crop_line", crop_line)
+    monkeypatch.setattr(pipeline, "read_line", lambda crop: texts[int(crop[0, 0])])
+    monkeypatch.setattr(pipeline, "read_page", lambda image: pytest.fail("sign mode must not read the whole page"))
+    monkeypatch.setattr(pipeline, "translate", lambda texts: [f"en:{t}" for t in texts])
+    return crops
+
+
+def test_sign_mode_reads_each_found_line_and_boxes_the_enclosing_rectangle(sign_fakes):
+    image, segments = pipeline.run(photo(), "sign")
+    assert image.shape[:2] == (200, 400)
+    assert segments == [
+        {"amharic": "ክፍት ነው", "english": "en:ክፍት ነው", "boxes": [(10, 10, 105, 42)]},  # min/max of the four corners
+        {"amharic": "መውጫ", "english": "en:መውጫ", "boxes": [(380, 150, 20, 50)]},  # clamped to the image; the empty read is dropped
+    ]
+
+
+def test_sign_mode_returns_the_resized_photo_without_straightening_it(sign_fakes):
+    image, _ = pipeline.run(photo(w=5000, h=2500), "sign")
+    assert max(image.shape[:2]) == pipeline.MAX_SIDE
+
+
+def test_sign_photo_with_no_lines_gives_no_segments(monkeypatch):
+    monkeypatch.setattr(pipeline, "find_lines", lambda image: [])
+    monkeypatch.setattr(pipeline, "translate", lambda texts: [])
+    assert pipeline.run(photo(), "sign")[1] == []
 
 
 def test_handwriting_mode_reads_the_page_like_document_mode(fakes):

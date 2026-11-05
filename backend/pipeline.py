@@ -7,7 +7,12 @@ import cv2
 import numpy as np
 
 from backend.translate import translate
-from ocr.reader import read_page
+from ocr.reader import read_line, read_page
+
+try:
+    from preprocessing import crop_line, find_lines
+except ImportError:  # shortcut: Kibreab's lane has not landed, so sign mode returns the placeholder; delete this guard when it does
+    crop_line = find_lines = None
 
 MAX_SIDE = 2500
 
@@ -21,11 +26,25 @@ def run(photo, mode):
     # shortcut: resize stands in for Kibreab's clean(); swap it in when his function lands
     image = _resized(photo)
     if mode == "sign":
-        return image, _placeholder(image)  # shortcut: sign returns a fixed sample until Kibreab's find_lines and crop_line land
+        return image, _placeholder(image) if find_lines is None else _sign(image)
     lines = read_page(image)  # handwriting takes the same path as document; it is experimental (about 75% character errors, ARCHITECTURE.md section 10)
     # shortcut: one OCR line = one segment, so a sentence broken across lines is translated in halves; replace with to_sentences()
     english = translate([line["text"] for line in lines])
     return image, [{"amharic": line["text"], "english": en, "boxes": [line["box"]]} for line, en in zip(lines, english)]
+
+
+def _sign(image):
+    """Each line found on the sign is cropped and read on its own; its box is the upright rectangle around its four corners."""
+    height, width = image.shape[:2]
+    found = []
+    for corners in find_lines(image):
+        text = read_line(crop_line(image, corners))
+        if text:  # clamped, because a tilted line's corner can fall just outside the image
+            xs = [min(max(int(x), 0), width) for x, _ in corners]
+            ys = [min(max(int(y), 0), height) for _, y in corners]
+            found.append((text, (min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))))
+    english = translate([text for text, _ in found])
+    return [{"amharic": text, "english": en, "boxes": [box]} for (text, box), en in zip(found, english)]
 
 
 def warm_up():

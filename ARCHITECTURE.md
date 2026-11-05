@@ -52,7 +52,7 @@ folder of sample photos, so nobody waits for anybody.
 | Owner | Function | Input → output |
 |---|---|---|
 | Kibreab | `clean(photo, mode)` | photo, mode → image, long side ≤ 2500 px. **This is the image the viewer shows; every box refers to it.** |
-| Kibreab | `find_lines(image)` | → list of line corners |
+| Kibreab | `find_lines(image)` | → list of lines, each given as its four corner points `[(x, y), ...]` in pixels of `image`, in any order. They may fall slightly outside the image. Both functions are imported as `from preprocessing import find_lines, crop_line`. |
 | Kibreab | `crop_line(image, corners)` | → upright line image, dark text on light, ~10 px margin |
 | Ferid | `read_page(image)` | → `[{"text": str, "box": (l, t, w, h)}, ...]`, one per text line, in reading order. Text is already normalized (below); lines that end up empty are dropped. |
 | Ferid | `read_line(line_image)` | → `str`, normalized |
@@ -60,7 +60,7 @@ folder of sample photos, so nobody waits for anybody.
 | Ferid | `fold_homophones(text)` | Merges same-sound letters (ሐ ኀ → ሀ, ሠ → ሰ, ዐ → አ, ፀ → ጸ). **Not called by the pipeline.** Only the scoring experiment uses it, to test whether folding improves translation; it ships only if the scores say so. **Measured 5 Nov: it lowered chrF by 1.8 points, so it stays out** (section 10). |
 | Semir | `to_sentences(lines)` | `[{"text", "box"}]` → `[{"amharic": str, "boxes": [box, ...]}]`. Joins lines, splits after `።` `፧` `!`, rejoins words split across lines, **never changes spelling**. Character-level fixes (including `፡` → space) are already done by `normalize`. |
 | Semir | `translate(sentences)` | `list[str]` Amharic → `list[str]` English, same order |
-| Semir | `pipeline.run(photo, mode)` | Wires the above. A sign line's box is the upright rectangle enclosing its corners. **Today (5 Nov):** `document` and `handwriting` are real and take the same path. It resizes the photo, runs `read_page`, translates, and treats **each OCR line as one segment**. That is temporary: a sentence that runs across lines is translated in halves until `to_sentences` replaces it. `sign` still returns a fixed placeholder. |
+| Semir | `pipeline.run(photo, mode)` | Wires the above. A sign line's box is the upright rectangle enclosing its corners. **Today (5 Nov):** `document` and `handwriting` are real and take the same path. It resizes the photo, runs `read_page`, translates, and treats **each OCR line as one segment**. That is temporary: a sentence that runs across lines is translated in halves until `to_sentences` replaces it. `sign` is wired to `find_lines`, `crop_line` and `read_line` and tested with fakes, but until Kibreab's functions exist in `preprocessing` it still returns a fixed placeholder (the import is guarded). A sign line's box is the rectangle around its four corners, clamped to the image. |
 
 ## 4. API contract (backend → frontend)
 
