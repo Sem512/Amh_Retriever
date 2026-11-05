@@ -50,10 +50,24 @@ def test_photo_without_text_gives_no_segments(monkeypatch):
     assert pipeline.run(photo(), "document")[1] == []
 
 
-@pytest.mark.parametrize("mode", ["sign", "handwriting"])
-def test_other_modes_keep_the_placeholder_and_skip_the_reader(fakes, mode):
-    _, segments = pipeline.run(photo(), mode)
+def test_sign_mode_keeps_the_placeholder_and_skips_the_reader(fakes):
+    _, segments = pipeline.run(photo(), "sign")
     assert fakes["read"] == 0 and len(segments) == 1
+
+
+def test_handwriting_mode_reads_the_page_like_document_mode(fakes):
+    assert pipeline.run(photo(), "handwriting")[1] == pipeline.run(photo(), "document")[1]
+    assert fakes["read"] == 2
+
+
+def test_api_handwriting_mode_returns_the_standard_shape(fakes):
+    png = cv2.imencode(".png", photo())[1].tobytes()
+    r = TestClient(app_module.app).post("/translate", files={"file": ("p.png", png, "image/png")}, data={"mode": "handwriting"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "handwriting"
+    assert [(s["amharic"], s["english"]) for s in body["segments"]] == [("ሰላም ነው።", "en:ሰላም ነው።"), ("እንዴት ነህ?", "en:እንዴት ነህ?")]
+    assert body["segments"][0]["bboxes"] == [{"x": 0.05, "y": 0.05, "w": 0.25, "h": 0.15}]
 
 
 def test_large_photo_is_resized_and_boxes_refer_to_the_resized_image(fakes):

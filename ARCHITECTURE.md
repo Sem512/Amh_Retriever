@@ -60,7 +60,7 @@ folder of sample photos, so nobody waits for anybody.
 | Ferid | `fold_homophones(text)` | Merges same-sound letters (ሐ ኀ → ሀ, ሠ → ሰ, ዐ → አ, ፀ → ጸ). **Not called by the pipeline.** Only the scoring experiment uses it, to test whether folding improves translation; it ships only if the scores say so. |
 | Semir | `to_sentences(lines)` | `[{"text", "box"}]` → `[{"amharic": str, "boxes": [box, ...]}]`. Joins lines, splits after `።` `፧` `!`, rejoins words split across lines, **never changes spelling**. Character-level fixes (including `፡` → space) are already done by `normalize`. |
 | Semir | `translate(sentences)` | `list[str]` Amharic → `list[str]` English, same order |
-| Semir | `pipeline.run(photo, mode)` | Wires the above. A sign line's box is the upright rectangle enclosing its corners. **Today (4 Nov):** only `document` mode is real. It resizes the photo, runs `read_page`, translates, and treats **each OCR line as one segment**. That is temporary: a sentence that runs across lines is translated in halves until `to_sentences` replaces it. `sign` and `handwriting` still return a fixed placeholder. |
+| Semir | `pipeline.run(photo, mode)` | Wires the above. A sign line's box is the upright rectangle enclosing its corners. **Today (5 Nov):** `document` and `handwriting` are real and take the same path. It resizes the photo, runs `read_page`, translates, and treats **each OCR line as one segment**. That is temporary: a sentence that runs across lines is translated in halves until `to_sentences` replaces it. `sign` still returns a fixed placeholder. |
 
 ## 4. API contract (backend → frontend)
 
@@ -311,6 +311,24 @@ laptop (i5-10500H, GTX 1650):
   junk rows, 30 is the highest cut-off that lost no real line here:** set it in one place in `reader.py`
   and re-run the command. Only phone photos can say whether it holds there; the scans are not phone
   photos.
+- **Handwriting baseline, 5 Nov 2026 (experimental).** `handwriting` mode reads through `read_page`, like
+  `document`. The 5 Fidel handwriting samples (4 lines each, nothing to copy or crop) were audited
+  against their labels first, because the earlier printed sample had misaligned labels: every sample
+  has the label line count of its image (4 and 4); the word count per line matches the image on 8 of 20
+  lines and is within one on 6 more (the rest are lines where my blob count merged tight words); and on
+  the 3 samples where the reader found 4 lines, all 12 lines are closest to their own label line, not
+  another. So the labels are aligned line by line. This does **not** check letters: handwriting is
+  read by eye only for order and word groups, and a person who reads Amharic should confirm the letters.
+
+  | Setting | Mean character error rate on the 5 samples |
+  |---|---|
+  | `amh` | 77.1% |
+  | `Ethiopic` | 75.2% |
+  | **`amh+Ethiopic`** (default) | **75.2%** |
+
+  About three characters in four are wrong, so the output is not usable as text; the mode is labelled
+  experimental and exists as a baseline. The reader found 3 lines on one sample and 5 on another, so line
+  finding also fails on loose handwriting. Surya-Fidel is the way past this (decide on 15 Nov).
 - **Through the API, 4 Nov 2026, `document` mode with the real engines** (resize only for cleanup, one
   segment per OCR line):
 

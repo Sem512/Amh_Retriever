@@ -20,9 +20,9 @@ def _resized(photo):
 def run(photo, mode):
     # shortcut: resize stands in for Kibreab's clean(); swap it in when his function lands
     image = _resized(photo)
-    if mode != "document":
-        return image, _placeholder(image)  # shortcut: sign and handwriting return a fixed sample until their tickets land
-    lines = read_page(image)
+    if mode == "sign":
+        return image, _placeholder(image)  # shortcut: sign returns a fixed sample until Kibreab's find_lines and crop_line land
+    lines = read_page(image)  # handwriting takes the same path as document; it is experimental (about 75% character errors, ARCHITECTURE.md section 10)
     # shortcut: one OCR line = one segment, so a sentence broken across lines is translated in halves; replace with to_sentences()
     english = translate([line["text"] for line in lines])
     return image, [{"amharic": line["text"], "english": en, "boxes": [line["box"]]} for line, en in zip(lines, english)]
