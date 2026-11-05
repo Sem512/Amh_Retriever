@@ -1,6 +1,7 @@
 """Reads Amharic text from images with Tesseract (tesserocr). Contract: ARCHITECTURE.md section 3.
 
-OCR_LANG picks the model in models/tessdata: "amh" (default) or "Ethiopic".
+OCR_LANG picks the model in models/tessdata: "amh", "Ethiopic", or "amh+Ethiopic" (default, both together:
+it had the lowest error on the real printed blocks, see ARCHITECTURE.md section 10).
 """
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ _api = None
 def _engine(psm, image):
     global _api
     if _api is None:  # loading the model takes about a second, so do it once
-        _api = tesserocr.PyTessBaseAPI(path=str(TESSDATA), lang=os.environ.get("OCR_LANG", "amh"))
+        _api = tesserocr.PyTessBaseAPI(path=str(TESSDATA), lang=os.environ.get("OCR_LANG", "amh+Ethiopic"))
     _api.SetPageSegMode(psm)
     _api.SetImage(Image.fromarray(image[..., ::-1] if image.ndim == 3 else image))  # BGR -> RGB
     return _api

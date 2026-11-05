@@ -106,7 +106,7 @@ when the API decodes them (OpenCV does this).
 
 | Part | Choice | License |
 |---|---|---|
-| OCR | Tesseract 5, `tessdata_best` `amh` and `script/Ethiopic`. Ferid picks by character error rate. | Apache 2.0 |
+| OCR | Tesseract 5, `tessdata_best` `amh` and `script/Ethiopic` run together (`amh+Ethiopic`), chosen by character error rate on the real printed blocks (section 10). | Apache 2.0 |
 | Sign text-finder | PP-OCRv5 mobile detector via RapidOCR/onnxruntime. Fallback: OpenCV's DNN text detector. Unproven on Ethiopic; measured on our sign photos. | Apache 2.0 |
 | Translation | `facebook/nllb-200-distilled-600M`, which we convert to CTranslate2 int8 ourselves | **CC-BY-NC 4.0 (non-commercial)**, disclosed in the report |
 | Handwriting (stretch only) | `kiyam/surya-fidel-amharic` in its own Python ≤ 3.13 environment | CC-BY-NC-SA + Datalab terms |
@@ -198,7 +198,12 @@ curl.exe -L -o models\tessdata\amh.traineddata https://github.com/tesseract-ocr/
 curl.exe -L -o models\tessdata\Ethiopic.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/main/script/Ethiopic.traineddata
 ```
 
-`OCR_LANG=Ethiopic` switches the reader to the Ethiopic model; the default is `amh`.
+`OCR_LANG` picks the model: `amh`, `Ethiopic`, or `amh+Ethiopic` (the default, both together).
+To re-run the model comparison on the private test photos:
+
+```
+.venv\Scripts\python -m ocr.compare_models <private test-photos folder>
+```
 
 Run the API and the tests, both from the repo root:
 
@@ -235,7 +240,27 @@ laptop (i5-10500H, GTX 1650):
   | `script/Ethiopic` | 4 of 4, in order | 6.3% (12 errors in 189 characters) |
 
   `amh` also wrote the full stop as `፡፡` on two lines, which is why `normalize` exists. This is one
-  clean page: the choice between the models is made on the real printed photos.
+  clean page: the choice between the models is made on the real printed photos (next item).
+- **OCR model choice, 5 Nov 2026, 8 printed blocks** (`python -m ocr.compare_models`; both the OCR text
+  and the answer key go through `normalize()` before scoring). Six blocks are from one CDC flyer scan,
+  one is a 1930 booklet page, one is a clean typed page from the Fidel dataset:
+
+  | Model | Mean character error rate | Blocks won outright |
+  |---|---|---|
+  | `amh` | 20.3% | 0 |
+  | `script/Ethiopic` | 17.5% | 2 |
+  | **`amh+Ethiopic`** (both together) | **16.6%** | **5** |
+
+  `amh+Ethiopic` is lower than `amh` on all 8 blocks. Against `Ethiopic` alone it wins 5, loses 2 (the
+  flyer's `c` and `e`) and ties 1. `amh` is ahead of `Ethiopic` only on clean text (Fidel page 4.9% vs
+  7.4%, generated page 1.1% vs 6.3%); on the real scans `Ethiopic` is ahead, largely because `amh` cannot
+  read Latin letters and digits: "የ COVID-19" came out as "የርዐሃሀ-19". Counting Ethiopic characters only,
+  the order is the same (16.6%, 14.3%, 13.1%). **The default is now `amh+Ethiopic`.** The cost is time:
+  a full 48-line flyer page reads in 2.6 s, against 1.9 s (`amh`) and 1.8 s (`Ethiopic`).
+
+  The evidence is thin: 8 blocks from 3 sources, a first-pass answer key with one reader, and the margin
+  over `Ethiopic` alone is 0.9 points. The choice stands unless the team's own phone photos say
+  otherwise: re-run the command above on a larger set, or set `OCR_LANG` to switch.
 - **Through the API, 4 Nov 2026, `document` mode with the real engines** (resize only for cleanup, one
   segment per OCR line):
 

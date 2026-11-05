@@ -6,6 +6,7 @@ import pytest
 from PIL import Image, ImageDraw, ImageFont
 
 from ocr.reader import TESSDATA
+from ocr.scoring import cer  # noqa: F401  (tests import it from here)
 
 FONT = Path(r"C:\Windows\Fonts\ebrima.ttf")
 LINES = [
@@ -18,8 +19,8 @@ LINES = [
 
 @pytest.fixture(scope="session")
 def page():
-    if not FONT.exists() or not (TESSDATA / "amh.traineddata").exists():
-        pytest.skip("needs the Ebrima font and models/tessdata/amh.traineddata (ARCHITECTURE.md section 9)")
+    if not FONT.exists() or not all((TESSDATA / f"{m}.traineddata").exists() for m in ("amh", "Ethiopic")):
+        pytest.skip("needs the Ebrima font and models/tessdata/amh.traineddata and Ethiopic.traineddata (ARCHITECTURE.md section 9)")
     font = ImageFont.truetype(str(FONT), 34)
     img = Image.new("RGB", (1700, 90 + 80 * len(LINES)), "white")
     draw = ImageDraw.Draw(img)
@@ -30,16 +31,6 @@ def page():
         left, top, right, bottom = draw.textbbox(xy, text, font=font)
         boxes.append((left, top, right - left, bottom - top))
     return {"image": np.array(img)[..., ::-1], "lines": LINES, "boxes": boxes}  # BGR like OpenCV
-
-
-def cer(expected, actual):
-    """Character error rate: edit distance / length of the expected text."""
-    row = list(range(len(actual) + 1))
-    for i, a in enumerate(expected, 1):
-        prev, row[0] = row[0], i
-        for j, b in enumerate(actual, 1):
-            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (a != b))
-    return row[-1] / len(expected)
 
 
 def iou(a, b):
