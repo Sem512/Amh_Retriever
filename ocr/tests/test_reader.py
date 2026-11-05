@@ -7,6 +7,14 @@ def test_cer_helper():
     assert cer("abcd", "abcd") == 0 and cer("abcd", "abxd") == 0.25 and cer("abcd", "") == 1
 
 
+def test_chrf_helper():
+    from ocr.scoring import chrf
+
+    assert chrf(["abc"], ["abc"]) == 100 and chrf(["abc"], ["xyz"]) == 0
+    # the same two sentences scored with sacreBLEU's default chrF give 67.3
+    assert round(chrf(["The cat sat on the mat.", "He is happy today"], ["The cat is on the mat.", "He was happy today."]), 1) == 67.3
+
+
 def test_read_page_finds_every_line_in_order(page):
     lines = read_page(page["image"])
     assert len(lines) == len(page["lines"])

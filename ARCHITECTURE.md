@@ -57,7 +57,7 @@ folder of sample photos, so nobody waits for anybody.
 | Ferid | `read_page(image)` | → `[{"text": str, "box": (l, t, w, h)}, ...]`, one per text line, in reading order. Text is already normalized (below); lines that end up empty are dropped. |
 | Ferid | `read_line(line_image)` | → `str`, normalized |
 | Ferid | `normalize(text)` | Fixes OCR mistakes: Unicode NFC; `፡፡` and `::` → `።`; `፡` or a stray `:` between Amharic letters → a space; a space before `።` `፣` `፤` `፥` removed; a line-start `-` or `.` before an Amharic word → the bullet `•`; extra whitespace collapsed. **Never re-spells a correctly read word.** New rules are added only when real OCR output shows a mistake, each with a test. Runs inside both readers. |
-| Ferid | `fold_homophones(text)` | Merges same-sound letters (ሐ ኀ → ሀ, ሠ → ሰ, ዐ → አ, ፀ → ጸ). **Not called by the pipeline.** Only the scoring experiment uses it, to test whether folding improves translation; it ships only if the scores say so. |
+| Ferid | `fold_homophones(text)` | Merges same-sound letters (ሐ ኀ → ሀ, ሠ → ሰ, ዐ → አ, ፀ → ጸ). **Not called by the pipeline.** Only the scoring experiment uses it, to test whether folding improves translation; it ships only if the scores say so. **Measured 5 Nov: it lowered chrF by 1.8 points, so it stays out** (section 10). |
 | Semir | `to_sentences(lines)` | `[{"text", "box"}]` → `[{"amharic": str, "boxes": [box, ...]}]`. Joins lines, splits after `።` `፧` `!`, rejoins words split across lines, **never changes spelling**. Character-level fixes (including `፡` → space) are already done by `normalize`. |
 | Semir | `translate(sentences)` | `list[str]` Amharic → `list[str]` English, same order |
 | Semir | `pipeline.run(photo, mode)` | Wires the above. A sign line's box is the upright rectangle enclosing its corners. **Today (5 Nov):** `document` and `handwriting` are real and take the same path. It resizes the photo, runs `read_page`, translates, and treats **each OCR line as one segment**. That is temporary: a sentence that runs across lines is translated in halves until `to_sentences` replaces it. `sign` still returns a fixed placeholder. |
@@ -311,6 +311,24 @@ laptop (i5-10500H, GTX 1650):
   junk rows, 30 is the highest cut-off that lost no real line here:** set it in one place in `reader.py`
   and re-run the command. Only phone photos can say whether it holds there; the scans are not phone
   photos.
+- **Letter-merging experiment, 5 Nov 2026: merging stays out.** `python -m backend.letter_merging_experiment`
+  reads each answer-key block that has an English reference (7 blocks: the 6 flyer sections and the booklet
+  page), translates it as read and again after `fold_homophones`, and scores both with chrF (our own
+  implementation, checked against sacreBLEU's default to 3 decimals) against the English reference. The
+  threshold to adopt was +1 chrF point.
+
+  | Block | As read | Letters merged |
+  |---|---|---|
+  | flyer `a` / `b` / `c` | 68.7 / 55.9 / 55.4 | 68.7 / 54.8 / 52.9 |
+  | flyer `d` / `e` / `f` | 63.6 / 60.8 / 46.6 | 62.8 / 57.3 / 44.1 |
+  | booklet page | 30.5 | 26.9 |
+  | **All 7 blocks** | **56.8** | **55.0** (−1.8) |
+
+  Merging lowered the score on 6 of 7 blocks and raised none, so it is not adopted and the pipeline does
+  not call it. The same translator on the typed answer key scores 68.0, so reading mistakes cost about
+  11 chrF points and are the bigger lever. Limits: the English references are drafts written from memory,
+  sentences are split by a simple rule on `።` `፧` `?` `!` (not the real `to_sentences`), and 6 of the 7 blocks
+  are one flyer, so treat the size of the drop as rough; the direction is the same on every block that moved.
 - **Handwriting baseline, 5 Nov 2026 (experimental).** `handwriting` mode reads through `read_page`, like
   `document`. The 5 Fidel handwriting samples (4 lines each, nothing to copy or crop) were audited
   against their labels first, because the earlier printed sample had misaligned labels: every sample
