@@ -24,8 +24,8 @@ def _engine(psm, image):
     return _api
 
 
-def read_page(image):
-    """Cleaned page -> [{"text": str, "box": (left, top, width, height)}], one per text line, in reading order."""
+def _read_lines(image):
+    """read_page plus each line's confidence (0 to 100). Internal: read_page drops the confidence."""
     api = _engine(tesserocr.PSM.AUTO, image)
     api.Recognize()
     lines = []
@@ -36,8 +36,13 @@ def read_page(image):
             continue
         if text:
             left, top, right, bottom = line.BoundingBox(tesserocr.RIL.TEXTLINE)  # tesserocr gives right/bottom, not width/height
-            lines.append({"text": text, "box": (left, top, right - left, bottom - top)})
+            lines.append({"text": text, "box": (left, top, right - left, bottom - top), "confidence": line.Confidence(tesserocr.RIL.TEXTLINE)})
     return lines
+
+
+def read_page(image):
+    """Cleaned page -> [{"text": str, "box": (left, top, width, height)}], one per text line, in reading order."""
+    return [{"text": line["text"], "box": line["box"]} for line in _read_lines(image)]
 
 
 def read_line(line_image):

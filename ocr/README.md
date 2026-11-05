@@ -16,8 +16,8 @@ the model download and test commands are in section 9.
 - `tests/`: normalizer tables, plus the real engine on a generated Ebrima page (line count, box overlap,
   character error rate).
 
-Still to do: choose a confidence threshold on the real printed photos, and
-grow `normalize` as real OCR mistakes turn up (each new rule with a test). Handwriting uses the same
+No confidence cut-off is used (measured, see `ARCHITECTURE.md` section 10; `python -m ocr.confidence_cutoffs
+<folder>` re-runs the measurement). Still to do: grow `normalize` as real OCR mistakes turn up (each new rule with a test). Handwriting uses the same
 `read_page` path as an experimental baseline.
 
 Run the tests from the repo root: `python -m pytest ocr`.

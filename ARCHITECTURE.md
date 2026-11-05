@@ -286,6 +286,31 @@ laptop (i5-10500H, GTX 1650):
   on every answer-key line, so a future rule that edits a letter fails it. The old-print `፡` words in the
   booklet and one spaced colon in the Fidel page are turned into spaces on purpose by an earlier rule, so
   those 5 lines are not unchanged, only un-respelled.
+- **Confidence cut-off, 5 Nov 2026: none needed.** The reader now reads each line's confidence (0 to
+  100) internally; `read_page` still returns only `text` and `box`. `python -m ocr.confidence_cutoffs`
+  drops the lines below each cut-off and counts what is lost (`amh+Ethiopic`; 75 lines on the answer-key
+  blocks, 20 handwriting, 50 scene, 458 on the 10 printed scans):
+
+  | Cut-off | Blocks CER | Block lines lost | Handwriting lost (of 20) | Scene lost (of 50) | Scan lines lost (of 458) |
+  |---|---|---|---|---|---|
+  | none | 15.5% | 0 | 0 | 0 | 0 |
+  | 30 | 15.5% | 0 | 1 | 3 | 14 |
+  | 40 | 15.5% | 0 | 10 | 13 | 33 |
+  | 50 | 15.5% | 0 | 18 | 21 | 71 |
+  | 60 | 18.9% | 2 | 20 | 24 | 141 |
+  | 70 | 22.9% | 5 | 20 | 32 | 203 |
+  | 80 | 39.4% | 19 | 20 | 37 | 285 |
+
+  Why no cut-off: confidence does not separate good lines from bad. A line read with no mistakes scored
+  71 and lines with 10 to 20% errors scored 90 or more, and all 75 block lines are real text (lowest 57).
+  Handwriting sits at 11 to 54 and the sign photos at 0 to 97, which is exactly where a cut-off would
+  bite, and real Amharic lines on the old scans also score 37 to 47 (`የንግድና የኢንደስትሪ ሚነክቴር`, 37). The
+  only clear junk is below 30: 14 of 458 scan lines, by eye all specks or the gazette's English text read
+  as Ethiopic letters (`ጊረ...`, `+ P`, `ont im this Misia`). That is 3% of lines on bilingual pages, and
+  the better fix for those is spotting Latin text, not confidence. **If the team's own phone photos show
+  junk rows, 30 is the highest cut-off that lost no real line here:** set it in one place in `reader.py`
+  and re-run the command. Only phone photos can say whether it holds there; the scans are not phone
+  photos.
 - **Through the API, 4 Nov 2026, `document` mode with the real engines** (resize only for cleanup, one
   segment per OCR line):
 

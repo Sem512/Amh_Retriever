@@ -22,6 +22,14 @@ def test_boxes_are_left_top_width_height_ints(page):
         assert left + width <= page["image"].shape[1] and top + height <= page["image"].shape[0]
 
 
+def test_read_page_returns_only_text_and_box_but_the_engine_confidence_is_visible(page):
+    from ocr.reader import _read_lines
+
+    assert all(set(line) == {"text", "box"} for line in read_page(page["image"]))
+    inner = _read_lines(page["image"])
+    assert len(inner) == len(page["lines"]) and all(0 <= line["confidence"] <= 100 for line in inner)
+
+
 def test_text_is_normalized(page):
     text = "".join(line["text"] for line in read_page(page["image"]))
     assert "፡፡" not in text and "  " not in text
